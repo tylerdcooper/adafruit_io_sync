@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 import aiohttp
 from homeassistant.config_entries import ConfigEntry
@@ -15,8 +16,35 @@ from .const import (
 )
 from .coordinator import AdafruitIOCoordinator
 from .mqtt_client import AdafruitIOMQTT
+from .panel_api import AIOSyncConfigView, AIOSyncGroupsView
 
 _LOGGER = logging.getLogger(__name__)
+_STATIC_PATH = "/adafruit_io_sync_panel"
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Register the sidebar panel, static files, and REST API — runs once at startup."""
+    hass.http.register_static_path(
+        _STATIC_PATH,
+        str(Path(__file__).parent / "www"),
+        cache_headers=False,
+    )
+
+    from homeassistant.components import panel_custom
+    await panel_custom.async_register_panel(
+        hass,
+        frontend_url_path="adafruit_io_sync",
+        webcomponent_name="adafruit-io-sync-panel",
+        sidebar_title="AIO Sync",
+        sidebar_icon="mdi:cloud-sync",
+        module_url=f"{_STATIC_PATH}/panel.js",
+        embed_iframe=False,
+        require_admin=True,
+    )
+
+    hass.http.register_view(AIOSyncConfigView)
+    hass.http.register_view(AIOSyncGroupsView)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -84,16 +112,11 @@ async def _async_setup_ha_to_aio(
         if config is None:
             return
         _LOGGER.debug(
-            "HA→AIO: %s = %s → %s.%s",
-            entity_id,
-            new_state.state,
-            config["aio_group"],
-            config["aio_feed"],
+            "HA→AIO: %s=%s → %s.%s",
+            entity_id, new_state.state, config["aio_group"], config["aio_feed"],
         )
         await mqtt_client.async_publish(
-            config["aio_group"],
-            config["aio_feed"],
-            new_state.state,
+            config["aio_group"], config["aio_feed"], new_state.state,
         )
 
     return async_track_state_change_event(hass, list(entity_map.keys()), _state_changed)
@@ -102,16 +125,14 @@ async def _async_setup_ha_to_aio(
 async def _async_ensure_aio_feeds(entry: ConfigEntry, ha_to_aio: list[dict]) -> None:
     """Create any AIO groups or feeds that don't exist yet."""
     username = entry.data[CONF_AIO_USERNAME]
-    api_key = entry.data[CONF_AIO_API_KEY]
-    headers = {"X-AIO-Key": api_key, "Content-Type": "application/json"}
+    api_key  = entry.data[CONF_AIO_API_KEY]
+    headers  = {"X-AIO-Key": api_key, "Content-Type": "application/json"}
 
     async with aiohttp.ClientSession() as session:
         async with session.get(
             f"{AIO_BASE_URL}/{username}/groups", headers=headers
         ) as resp:
-            existing_groups: set[str] = set()
-            if resp.ok:
-                existing_groups = {g["key"] for g in await resp.json()}
+            existing_groups: set[str] = {g["key"] for g in await resp.json()} if resp.ok else set()
 
         for group_key in {item["aio_group"] for item in ha_to_aio}:
             if group_key not in existing_groups:
@@ -124,7 +145,7 @@ async def _async_ensure_aio_feeds(entry: ConfigEntry, ha_to_aio: list[dict]) -> 
 
         for item in ha_to_aio:
             group_key = item["aio_group"]
-            feed_key = item["aio_feed"]
+            feed_key  = item["aio_feed"]
             async with session.get(
                 f"{AIO_BASE_URL}/{username}/feeds/{group_key}.{feed_key}",
                 headers=headers,
