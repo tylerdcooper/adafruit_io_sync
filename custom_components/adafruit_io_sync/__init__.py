@@ -1,5 +1,4 @@
 import logging
-from pathlib import Path
 
 import aiohttp
 from homeassistant.config_entries import ConfigEntry
@@ -16,19 +15,18 @@ from .const import (
 )
 from .coordinator import AdafruitIOCoordinator
 from .mqtt_client import AdafruitIOMQTT
-from .panel_api import AIOSyncConfigView, AIOSyncGroupsView
+from .panel_api import AIOSyncConfigView, AIOSyncGroupsView, PanelJSView
 
 _LOGGER = logging.getLogger(__name__)
 _STATIC_PATH = "/adafruit_io_sync_panel"
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """Register the sidebar panel, static files, and REST API — runs once at startup."""
-    hass.http.register_static_path(
-        _STATIC_PATH,
-        str(Path(__file__).parent / "www"),
-        cache_headers=False,
-    )
+    """Register the sidebar panel and REST API — runs once at startup."""
+    # Serve panel.js via a plain view (compatible with all HA versions)
+    hass.http.register_view(PanelJSView)
+    hass.http.register_view(AIOSyncConfigView)
+    hass.http.register_view(AIOSyncGroupsView)
 
     from homeassistant.components import panel_custom
     await panel_custom.async_register_panel(
@@ -41,9 +39,6 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         embed_iframe=False,
         require_admin=True,
     )
-
-    hass.http.register_view(AIOSyncConfigView)
-    hass.http.register_view(AIOSyncGroupsView)
     return True
 
 

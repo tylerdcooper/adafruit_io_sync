@@ -1,10 +1,25 @@
 import logging
+from pathlib import Path
 
+from aiohttp.web import FileResponse
 from homeassistant.components.http import HomeAssistantView
 
 from .const import CONF_FEEDS, CONF_HA_TO_AIO, CONF_SYNCED_GROUPS, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
+
+_WWW = Path(__file__).parent / "www"
+
+
+class PanelJSView(HomeAssistantView):
+    """Serves the panel JavaScript file — no auth required so HA can load it."""
+
+    url = "/adafruit_io_sync_panel/panel.js"
+    name = "adafruit_io_sync:panel_js"
+    requires_auth = False
+
+    async def get(self, request):
+        return FileResponse(str(_WWW / "panel.js"))
 
 
 class AIOSyncConfigView(HomeAssistantView):
