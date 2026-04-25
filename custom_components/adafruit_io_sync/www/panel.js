@@ -619,7 +619,7 @@ class AdafruitIOSyncPanel extends HTMLElement {
     let html = '';
 
     if (!gkeys.length) {
-      html = `<div class="browser-empty">No Adafruit IO groups found.<br>Check your connection or credentials.</div>`;
+      html = `<div class="browser-empty">No Adafruit IO groups found.<br>Check your connection or credentials.<br><br><button class="btn btn-ghost btn-sm" data-reload-groups>Retry</button></div>`;
     } else {
       for (const gk of gkeys) {
         const grp = this._groups[gk];
@@ -687,7 +687,7 @@ class AdafruitIOSyncPanel extends HTMLElement {
       <div class="panel">
         <div class="panel-header">Available Feeds</div>
         <div class="search-wrap">
-          <input class="search-input" type="search" placeholder="Search groups and feeds…" value="${esc(this._filter)}" data-search>
+          <input class="search-input" type="text" autocomplete="off" placeholder="Search groups and feeds…" value="${esc(this._filter)}" data-search>
         </div>
         ${html}
       </div>`;
@@ -875,6 +875,10 @@ class AdafruitIOSyncPanel extends HTMLElement {
       this._openFeed = this._editFeed = this._editEnt = null;
       this._render();
     }));
+
+    // Retry loading groups
+    const retryBtn = q('[data-reload-groups]');
+    if (retryBtn) retryBtn.addEventListener('click', () => this._loadData());
 
     // Search
     const s = q('[data-search]');
