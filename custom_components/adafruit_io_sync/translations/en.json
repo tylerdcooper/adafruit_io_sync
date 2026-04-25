@@ -21,16 +21,31 @@
   "options": {
     "step": {
       "init": {
-        "title": "Select Groups to Sync",
-        "description": "Choose which Adafruit IO feed groups to bring into Home Assistant.\n\nEach group becomes a **device**; each feed inside it becomes an **entity**.",
+        "title": "AIO → HA: Select Groups",
+        "description": "Choose which Adafruit IO feed groups to import into Home Assistant. Each group becomes a **device**; each feed becomes an **entity**.",
         "data": {
-          "synced_groups": "Groups to sync"
+          "synced_groups": "Groups to import"
         }
       },
       "group_feeds": {
-        "title": "Configure feeds — {group_name}",
-        "description": "Set the entity type, sync direction, and optional unit for each feed in **{group_name}**.\n\n**Feeds in this group:** {feeds}\n\n*{remaining} group(s) left to configure after this.*\n\n**Entity types:** sensor (read-only value), switch (on/off), number (slider/input), text (string)\n**Direction:** *AIO → HA* means HA is read-only. *Bidirectional* lets HA write back to AIO.\n**Unit** is shown in the HA UI and is only meaningful for sensor and number types.",
+        "title": "AIO → HA: Configure feeds — {group_name}",
+        "description": "Configure each feed in **{group_name}**.\n\n**Feeds:** {feeds}\n\n**Entity types:** sensor (read-only value), switch (on/off), number (numeric input), text (string)\n**Direction:** *AIO → HA* is read-only. *Bidirectional* lets HA write back to AIO.\n**Unit** is optional and applies to sensor/number types.\n\n*{remaining} group(s) remaining after this.*",
         "data": {}
+      },
+      "ha_to_aio": {
+        "title": "HA → AIO: Select Entities",
+        "description": "Choose Home Assistant entities whose state changes should be pushed to Adafruit IO in real time.\n\nThe next step will let you name the AIO group and feed for each one.",
+        "data": {
+          "entities": "Entities to push to AIO"
+        }
+      },
+      "ha_entity_config": {
+        "title": "HA → AIO: Configure — {entity_id}",
+        "description": "Set the Adafruit IO **group** and **feed** name for **{entity_id}**.\n\nIf the group or feed doesn't exist in AIO yet it will be created automatically.\n\n*{remaining} entity(s) remaining after this.*",
+        "data": {
+          "aio_group": "AIO group name",
+          "aio_feed": "AIO feed name"
+        }
       }
     },
     "abort": {

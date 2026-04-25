@@ -17,5 +17,6 @@ CONF_AIO_USERNAME = "username"
 CONF_AIO_API_KEY = "api_key"
 CONF_SYNCED_GROUPS = "synced_groups"
 CONF_FEEDS = "feeds"
+CONF_HA_TO_AIO = "ha_to_aio"
 
 PLATFORMS = ["sensor", "switch", "number", "text"]

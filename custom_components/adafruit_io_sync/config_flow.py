@@ -1,16 +1,14 @@
 """
 Config flow for Adafruit IO Sync.
 
-Initial setup  (ConfigFlow):
+Initial setup (ConfigFlow):
   user → enter username + API key → validate → done
 
-Options flow (gear icon on the integration):
-  init        → multiselect which AIO groups to bring into HA
-  group_feeds → one step per selected group; configure every feed:
-                  • enabled (bool)
-                  • entity type  (sensor / switch / number / text)
-                  • direction    (AIO→HA read-only  |  bidirectional)
-                  • unit of measurement (optional, used by sensor + number)
+Options flow (gear icon):
+  init             → pick which AIO groups to pull into HA
+  group_feeds      → configure each feed (one page per group)
+  ha_to_aio        → pick which HA entities to push to AIO
+  ha_entity_config → name the AIO group/feed for each entity (one page per entity)
 """
 
 from __future__ import annotations
@@ -23,6 +21,8 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers.selector import (
     BooleanSelector,
+    EntitySelector,
+    EntitySelectorConfig,
     SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
@@ -37,6 +37,7 @@ from .const import (
     CONF_AIO_API_KEY,
     CONF_AIO_USERNAME,
     CONF_FEEDS,
+    CONF_HA_TO_AIO,
     CONF_SYNCED_GROUPS,
     DIRECTION_AIO_TO_HA,
     DIRECTION_BIDIRECTIONAL,
@@ -48,7 +49,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Exceptions used during credential validation
+# Exceptions
 # ---------------------------------------------------------------------------
 
 class InvalidAuth(Exception):
@@ -64,12 +65,10 @@ class CannotConnect(Exception):
 # ---------------------------------------------------------------------------
 
 def _safe_key(key: str) -> str:
-    """Convert an AIO feed key to a safe voluptuous field name (no hyphens/dots)."""
     return key.replace("-", "_").replace(".", "_")
 
 
 async def _validate_credentials(username: str, api_key: str) -> None:
-    """Hit the AIO API; raise InvalidAuth or CannotConnect on failure."""
     headers = {"X-AIO-Key": api_key}
     url = f"{AIO_BASE_URL}/{username}/groups"
     try:
@@ -83,7 +82,6 @@ async def _validate_credentials(username: str, api_key: str) -> None:
 
 
 async def _fetch_groups(username: str, api_key: str) -> dict:
-    """Return coordinator-style group dict directly from the REST API."""
     headers = {"X-AIO-Key": api_key}
     url = f"{AIO_BASE_URL}/{username}/groups"
     async with aiohttp.ClientSession() as session:
@@ -155,29 +153,32 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 # ---------------------------------------------------------------------------
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
-    """
-    Multi-step options wizard:
-      init         — pick which AIO groups to sync
-      group_feeds  — repeated once per selected group to configure each feed
-    """
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         self._entry = config_entry
+
+        # AIO → HA state
         self._all_groups: dict = {}
         self._selected_groups: list[str] = []
         self._groups_queue: list[str] = []
         self._current_group: str | None = None
-        # Carry existing feed options forward so re-configuring keeps old values
         self._feed_configs: dict = dict(config_entry.options.get(CONF_FEEDS, {}))
 
+        # HA → AIO state
+        self._ha_entities_selected: list[str] = []
+        self._ha_entities_queue: list[str] = []
+        self._current_ha_entity: str | None = None
+        self._ha_to_aio_configs: list[dict] = []
+        self._existing_ha_to_aio: dict[str, dict] = {
+            item["entity_id"]: item
+            for item in config_entry.options.get(CONF_HA_TO_AIO, [])
+        }
+
     # ------------------------------------------------------------------
-    # Step 1 — pick groups
+    # Step 1 — pick AIO groups to pull into HA
     # ------------------------------------------------------------------
 
     async def async_step_init(self, user_input=None):
-        errors: dict[str, str] = {}
-
-        # Prefer live coordinator data; fall back to a fresh REST fetch
         coordinator = self.hass.data[DOMAIN][self._entry.entry_id]["coordinator"]
         self._all_groups = coordinator.data or {}
 
@@ -196,22 +197,9 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             self._selected_groups = user_input.get(CONF_SYNCED_GROUPS, [])
             self._groups_queue = list(self._selected_groups)
-
-            if not self._groups_queue:
-                # Nothing selected — save and exit immediately
-                return self.async_create_entry(
-                    title="",
-                    data={CONF_SYNCED_GROUPS: [], CONF_FEEDS: {}},
-                )
-
             return await self.async_step_group_feeds()
 
         current_selection = self._entry.options.get(CONF_SYNCED_GROUPS, [])
-
-        group_options = [
-            SelectOptionDict(value=k, label=v["name"])
-            for k, v in self._all_groups.items()
-        ]
 
         return self.async_show_form(
             step_id="init",
@@ -221,22 +209,23 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                         CONF_SYNCED_GROUPS, default=current_selection
                     ): SelectSelector(
                         SelectSelectorConfig(
-                            options=group_options,
+                            options=[
+                                SelectOptionDict(value=k, label=v["name"])
+                                for k, v in self._all_groups.items()
+                            ],
                             multiple=True,
                             mode=SelectSelectorMode.LIST,
                         )
                     ),
                 }
             ),
-            errors=errors,
         )
 
     # ------------------------------------------------------------------
-    # Step 2..N — configure feeds for one group at a time
+    # Steps 2..N — configure feeds for one group at a time
     # ------------------------------------------------------------------
 
     async def async_step_group_feeds(self, user_input=None):
-        # Save submitted data for the group we just showed
         if user_input is not None and self._current_group is not None:
             group_feeds = self._all_groups[self._current_group]["feeds"]
             for feed_key in group_feeds:
@@ -249,22 +238,15 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     "unit": user_input.get(f"{safe}_unit", ""),
                 }
 
-        # Advance to the next group, or finish if the queue is empty
         if not self._groups_queue:
-            # Prune feed configs that no longer belong to a selected group
+            # Prune stale feed configs then move on to HA→AIO setup
             selected_prefixes = tuple(f"{g}." for g in self._selected_groups)
-            pruned = {
+            self._feed_configs = {
                 k: v
                 for k, v in self._feed_configs.items()
                 if k.startswith(selected_prefixes)
             }
-            return self.async_create_entry(
-                title="",
-                data={
-                    CONF_SYNCED_GROUPS: self._selected_groups,
-                    CONF_FEEDS: pruned,
-                },
-            )
+            return await self.async_step_ha_to_aio()
 
         self._current_group = self._groups_queue.pop(0)
         group_data = self._all_groups[self._current_group]
@@ -283,10 +265,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             schema_dict[
                 vol.Optional(f"{safe}_type", default=current.get("entity_type", "sensor"))
             ] = SelectSelector(
-                SelectSelectorConfig(
-                    options=ENTITY_TYPES,
-                    mode=SelectSelectorMode.DROPDOWN,
-                )
+                SelectSelectorConfig(options=ENTITY_TYPES, mode=SelectSelectorMode.DROPDOWN)
             )
 
             schema_dict[
@@ -297,14 +276,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             ] = SelectSelector(
                 SelectSelectorConfig(
                     options=[
-                        SelectOptionDict(
-                            value=DIRECTION_AIO_TO_HA,
-                            label="AIO → HA  (read-only)",
-                        ),
-                        SelectOptionDict(
-                            value=DIRECTION_BIDIRECTIONAL,
-                            label="Bidirectional  (read + write)",
-                        ),
+                        SelectOptionDict(value=DIRECTION_AIO_TO_HA, label="AIO → HA  (read-only)"),
+                        SelectOptionDict(value=DIRECTION_BIDIRECTIONAL, label="Bidirectional  (read + write)"),
                     ],
                     mode=SelectSelectorMode.DROPDOWN,
                 )
@@ -314,15 +287,98 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(f"{safe}_unit", default=current.get("unit", ""))
             ] = TextSelector()
 
-        feed_names = ", ".join(info["name"] for info in feeds.values())
-        remaining = len(self._groups_queue)
-
         return self.async_show_form(
             step_id="group_feeds",
             data_schema=vol.Schema(schema_dict),
             description_placeholders={
                 "group_name": group_data["name"],
-                "feeds": feed_names,
-                "remaining": str(remaining),
+                "feeds": ", ".join(f["name"] for f in feeds.values()),
+                "remaining": str(len(self._groups_queue)),
+            },
+        )
+
+    # ------------------------------------------------------------------
+    # Step N+1 — pick HA entities to push to AIO
+    # ------------------------------------------------------------------
+
+    async def async_step_ha_to_aio(self, user_input=None):
+        if user_input is not None:
+            self._ha_entities_selected = user_input.get("entities", [])
+            self._ha_entities_queue = list(self._ha_entities_selected)
+            self._ha_to_aio_configs = []
+
+            if not self._ha_entities_queue:
+                return self._create_final_entry()
+
+            return await self.async_step_ha_entity_config()
+
+        current_entities = list(self._existing_ha_to_aio.keys())
+
+        return self.async_show_form(
+            step_id="ha_to_aio",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional("entities", default=current_entities): EntitySelector(
+                        EntitySelectorConfig(multiple=True)
+                    ),
+                }
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # Steps N+2.. — name the AIO group/feed for each selected HA entity
+    # ------------------------------------------------------------------
+
+    async def async_step_ha_entity_config(self, user_input=None):
+        if user_input is not None and self._current_ha_entity is not None:
+            self._ha_to_aio_configs.append(
+                {
+                    "entity_id": self._current_ha_entity,
+                    "aio_group": user_input["aio_group"].lower().replace(" ", "-"),
+                    "aio_feed": user_input["aio_feed"].lower().replace(" ", "-"),
+                }
+            )
+
+        if not self._ha_entities_queue:
+            return self._create_final_entry()
+
+        self._current_ha_entity = self._ha_entities_queue.pop(0)
+        entity_id = self._current_ha_entity
+        existing = self._existing_ha_to_aio.get(entity_id, {})
+
+        # Sensible defaults derived from the entity_id (e.g. sensor.living_room_temp)
+        default_feed = entity_id.split(".")[-1].replace("_", "-")
+
+        return self.async_show_form(
+            step_id="ha_entity_config",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        "aio_group",
+                        default=existing.get("aio_group", "home-assistant"),
+                    ): TextSelector(),
+                    vol.Required(
+                        "aio_feed",
+                        default=existing.get("aio_feed", default_feed),
+                    ): TextSelector(),
+                }
+            ),
+            description_placeholders={
+                "entity_id": entity_id,
+                "remaining": str(len(self._ha_entities_queue)),
+            },
+        )
+
+    # ------------------------------------------------------------------
+    # Finish — write options
+    # ------------------------------------------------------------------
+
+    def _create_final_entry(self):
+        return self.async_create_entry(
+            title="",
+            data={
+                CONF_SYNCED_GROUPS: self._selected_groups,
+                CONF_FEEDS: self._feed_configs,
+                CONF_HA_TO_AIO: self._ha_to_aio_configs,
             },
         )
