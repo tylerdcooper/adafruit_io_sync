@@ -159,7 +159,7 @@ const STYLES = `
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 14px;
+  padding: 9px 10px 9px 14px;
   cursor: pointer;
   user-select: none;
   transition: background 0.1s;
@@ -183,6 +183,23 @@ const STYLES = `
   padding: 1px 7px;
   font-size: 11px;
 }
+.group-add-btn {
+  background: transparent;
+  border: 1px solid var(--bdr);
+  border-radius: 6px;
+  color: var(--tx2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  transition: all 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.group-add-btn:hover { color: var(--acc); border-color: var(--acc); background: rgba(3,169,244,0.07); }
 
 .feed-browser-item {
   display: flex;
@@ -217,17 +234,60 @@ const STYLES = `
 }
 
 /* ── Inline Add Form ─────────────────────────────────── */
+/* ── Inline add form (under a browser feed item) ─────── */
 .inline-form {
   background: rgba(3,169,244,0.05);
   border-top: 2px solid var(--acc);
-  padding: 14px 14px 14px 32px;
+  border-bottom: 1px solid var(--bdr);
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
+.inline-form .form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 72px;
+  gap: 8px;
+  align-items: end;
+}
+.inline-form .form-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+/* ── Group add form (under group header) ─────────────── */
+.group-form {
+  background: rgba(3,169,244,0.05);
+  border-top: 2px solid var(--acc);
+  border-bottom: 1px solid var(--bdr);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.group-form .form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 72px;
+  gap: 8px;
+  align-items: end;
+}
+.group-form .form-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  align-items: center;
+}
+.group-form-hint {
+  font-size: 11px;
+  color: var(--tx2);
+}
+
+/* ── Shared form field ───────────────────────────────── */
 .form-row {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
   align-items: flex-end;
 }
@@ -236,13 +296,13 @@ const STYLES = `
   flex-direction: column;
   gap: 4px;
   flex: 1;
-  min-width: 90px;
+  min-width: 80px;
 }
 .form-field label {
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.6px;
   color: var(--tx2);
 }
 .form-field input,
@@ -251,12 +311,13 @@ const STYLES = `
   border: 1px solid var(--bdr);
   border-radius: var(--rad-s);
   color: var(--tx1);
-  padding: 7px 9px;
+  padding: 6px 8px;
   font-size: 13px;
   outline: none;
   transition: border-color 0.15s;
   width: 100%;
   box-sizing: border-box;
+  height: 32px;
 }
 .form-field input:focus,
 .form-field select:focus { border-color: var(--acc); }
@@ -552,13 +613,15 @@ class AdafruitIOSyncPanel extends HTMLElement {
     this._cfg = { feeds: {}, ha_to_aio: [] };
     this._expanded = new Set();
     this._openFeed   = null;
+    this._openGroup  = null;
     this._editFeed   = null;
     this._editEnt    = null;
     this._filter     = '';
     this._loading    = true;
     this._saving     = false;
     this._loadError  = null;
-    this._addForm    = { entity_type: 'sensor', direction: 'aio_to_ha', unit: '' };
+    this._addForm      = { entity_type: 'sensor', direction: 'aio_to_ha', unit: '' };
+    this._groupAddForm = { entity_type: 'sensor', direction: 'aio_to_ha', unit: '' };
     this._editForm   = {};
     this._newEnt     = { entity_id: '', aio_group: '', aio_feed: '' };
     this._editEntForm = {};
@@ -605,7 +668,7 @@ class AdafruitIOSyncPanel extends HTMLElement {
     try {
       await this._hass.callApi('POST', 'adafruit_io_sync/config', options);
       this._cfg = options;
-      this._openFeed = null; this._editFeed = null; this._editEnt = null;
+      this._openFeed = null; this._openGroup = null; this._editFeed = null; this._editEnt = null;
       this._showToast('Saved — reloading integration…');
     } catch (e) {
       this._showToast(`Save failed: ${e?.message || e}`, true);
@@ -669,18 +732,57 @@ class AdafruitIOSyncPanel extends HTMLElement {
       for (const gk of gkeys) {
         const grp = this._groups[gk];
         const fkeys = Object.keys(grp.feeds || {});
-        const vis = q ? fkeys.filter(fk => fk.includes(q) || gk.includes(q)) : fkeys;
+        const vis = q ? fkeys.filter(fk => {
+          const name = (grp.feeds[fk]?.name || fk).toLowerCase();
+          return fk.includes(q) || name.includes(q) || gk.includes(q) || (grp.name||'').toLowerCase().includes(q);
+        }) : fkeys;
         if (q && !vis.length) continue;
 
         const open = this._expanded.has(gk);
         const nAdded = fkeys.filter(fk => (`${gk}.${fk}`) in (this._cfg.feeds||{})).length;
+        const nUnadded = fkeys.length - nAdded;
+        const groupFormOpen = this._openGroup === gk;
+        const gf = this._groupAddForm;
 
         html += `
           <div class="group-header" data-gk="${esc(gk)}">
             <span class="group-chevron${open?' open':''}">${IC.chev}</span>
             <span class="group-name">${esc(grp.name||gk)}</span>
             <span class="group-badge">${nAdded?`${nAdded}/`:''}${fkeys.length}</span>
+            ${nUnadded > 0 ? `<button class="group-add-btn" data-gadd="${esc(gk)}" title="Add all feeds in this group">${IC.plus} Add group</button>` : ''}
           </div>`;
+
+        if (groupFormOpen) {
+          html += `
+            <div class="group-form">
+              <div class="form-grid">
+                <div class="form-field">
+                  <label>Default Type</label>
+                  <select data-gf-type>
+                    ${['sensor','switch','number','text'].map(t=>`<option value="${t}"${gf.entity_type===t?' selected':''}>${TYPE_META[t].label}</option>`).join('')}
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label>Direction</label>
+                  <select data-gf-dir>
+                    <option value="aio_to_ha"${gf.direction==='aio_to_ha'?' selected':''}>AIO → HA</option>
+                    <option value="bidirectional"${gf.direction==='bidirectional'?' selected':''}>⇄ Bidirectional</option>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label>Unit</label>
+                  <input type="text" data-gf-unit placeholder="opt." value="${esc(gf.unit)}">
+                </div>
+              </div>
+              <div class="form-actions">
+                <span class="group-form-hint">Applies to all ${nUnadded} unadded feed${nUnadded===1?'':'s'}</span>
+                <div style="display:flex;gap:8px">
+                  <button class="btn btn-ghost btn-sm" data-gf-cancel>Cancel</button>
+                  <button class="btn btn-primary btn-sm" data-gf-add="${esc(gk)}">${IC.plus} Add ${nUnadded} feed${nUnadded===1?'':'s'}</button>
+                </div>
+              </div>
+            </div>`;
+        }
 
         if (open || q) {
           for (const fk of vis) {
@@ -689,6 +791,8 @@ class AdafruitIOSyncPanel extends HTMLElement {
             const formOpen = this._openFeed === full;
             const feedName = grp.feeds[fk]?.name || fk;
             const nameMatchesKey = feedName === fk;
+            const f = this._addForm;
+
             html += `
               <div class="feed-browser-item${added?' added':''}" data-fk="${esc(full)}" data-added="${added}">
                 <span class="feed-dot${added?' added-dot':''}"></span>
@@ -700,12 +804,11 @@ class AdafruitIOSyncPanel extends HTMLElement {
               </div>`;
 
             if (formOpen && !added) {
-              const f = this._addForm;
               html += `
-                <div class="inline-form" data-add-for="${esc(full)}">
-                  <div class="form-row">
+                <div class="inline-form">
+                  <div class="form-grid">
                     <div class="form-field">
-                      <label>Entity Type</label>
+                      <label>Type</label>
                       <select data-af-type>
                         ${['sensor','switch','number','text'].map(t=>`<option value="${t}"${f.entity_type===t?' selected':''}>${TYPE_META[t].label}</option>`).join('')}
                       </select>
@@ -717,9 +820,9 @@ class AdafruitIOSyncPanel extends HTMLElement {
                         <option value="bidirectional"${f.direction==='bidirectional'?' selected':''}>⇄ Bidirectional</option>
                       </select>
                     </div>
-                    <div class="form-field" style="max-width:85px">
+                    <div class="form-field">
                       <label>Unit</label>
-                      <input type="text" data-af-unit placeholder="°F" value="${esc(f.unit)}">
+                      <input type="text" data-af-unit placeholder="opt." value="${esc(f.unit)}">
                     </div>
                   </div>
                   <div class="form-actions">
@@ -949,29 +1052,69 @@ class AdafruitIOSyncPanel extends HTMLElement {
       if (ns) { ns.focus(); ns.setSelectionRange(cursor, cursor); }
     });
 
-    // Group expand
-    qa('.group-header').forEach(el => el.addEventListener('click', () => {
+    // Group expand — ignore clicks on the "Add group" button
+    qa('.group-header').forEach(el => el.addEventListener('click', e => {
+      if (e.target.closest('[data-gadd]')) return;
       const gk = el.dataset.gk;
       this._expanded.has(gk) ? this._expanded.delete(gk) : this._expanded.add(gk);
+      this._openGroup = null;
       this._render();
+    }));
+
+    // Group add button → open group form
+    qa('[data-gadd]').forEach(btn => btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const gk = btn.dataset.gadd;
+      this._openGroup = this._openGroup === gk ? null : gk;
+      this._openFeed = null;
+      this._groupAddForm = { entity_type: 'sensor', direction: 'aio_to_ha', unit: '' };
+      if (this._openGroup) this._expanded.add(gk);
+      this._render();
+    }));
+
+    // Group form inputs
+    const gfType = q('[data-gf-type]'), gfDir = q('[data-gf-dir]'), gfUnit = q('[data-gf-unit]');
+    if (gfType) gfType.addEventListener('change', e => { this._groupAddForm.entity_type = e.target.value; });
+    if (gfDir)  gfDir .addEventListener('change', e => { this._groupAddForm.direction   = e.target.value; });
+    if (gfUnit) gfUnit.addEventListener('input',  e => { this._groupAddForm.unit        = e.target.value; });
+
+    // Group form cancel
+    const gfCancel = q('[data-gf-cancel]');
+    if (gfCancel) gfCancel.addEventListener('click', () => { this._openGroup = null; this._render(); });
+
+    // Group form add all
+    qa('[data-gf-add]').forEach(btn => btn.addEventListener('click', () => {
+      const gk   = btn.dataset.gfAdd;
+      const type = q('[data-gf-type]')?.value || 'sensor';
+      const dir  = q('[data-gf-dir]')?.value  || 'aio_to_ha';
+      const unit = q('[data-gf-unit]')?.value || '';
+      const grp  = this._groups[gk];
+      if (!grp) return;
+      const newFeeds = { ...this._cfg.feeds };
+      for (const fk of Object.keys(grp.feeds || {})) {
+        const full = `${gk}.${fk}`;
+        if (!(full in newFeeds)) newFeeds[full] = { entity_type: type, direction: dir, unit, enabled: true };
+      }
+      this._save({ ...this._cfg, feeds: newFeeds });
     }));
 
     // Feed browser click → open add form
     qa('.feed-browser-item').forEach(el => el.addEventListener('click', () => {
       if (el.dataset.added === 'true') return;
       const fk = el.dataset.fk;
-      this._openFeed = this._openFeed === fk ? null : fk;
-      this._addForm = { entity_type: 'sensor', direction: 'aio_to_ha', unit: '' };
+      this._openFeed  = this._openFeed === fk ? null : fk;
+      this._openGroup = null;
+      this._addForm   = { entity_type: 'sensor', direction: 'aio_to_ha', unit: '' };
       this._render();
     }));
 
-    // Add form inputs (live state — no re-render needed)
+    // Feed add form inputs
     const afType = q('[data-af-type]'), afDir = q('[data-af-dir]'), afUnit = q('[data-af-unit]');
     if (afType) afType.addEventListener('change', e => { this._addForm.entity_type = e.target.value; });
     if (afDir)  afDir .addEventListener('change', e => { this._addForm.direction   = e.target.value; });
     if (afUnit) afUnit.addEventListener('input',  e => { this._addForm.unit        = e.target.value; });
 
-    // Add form cancel / confirm
+    // Feed add form cancel / confirm
     const afCancel = q('[data-af-cancel]');
     if (afCancel) afCancel.addEventListener('click', () => { this._openFeed = null; this._render(); });
 
