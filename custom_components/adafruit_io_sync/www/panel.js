@@ -452,6 +452,29 @@ const STYLES = `
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+.type-unknown, .dir-unknown { background: rgba(255,255,255,0.07); color: var(--tx2); }
+
+.warn-banner {
+  background: rgba(255,152,0,0.1);
+  border-bottom: 1px solid rgba(255,152,0,0.25);
+  color: #ffcc80;
+  padding: 10px 16px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.btn-link {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--acc);
+  font-size: inherit;
+  padding: 0;
+  text-decoration: underline;
+  font-family: inherit;
+}
+.danger-link { color: #ef5350; text-decoration: none; }
+.danger-link:hover { text-decoration: underline; }
+
 .error-banner {
   background: rgba(198,40,40,0.12);
   border: 1px solid rgba(198,40,40,0.4);
@@ -717,19 +740,23 @@ class AdafruitIOSyncPanel extends HTMLElement {
   _tplConfiguredFeeds() {
     const feeds = this._cfg.feeds || {};
     const keys = Object.keys(feeds);
+    const unknownCount = keys.filter(fk => !TYPE_META[feeds[fk].entity_type] || !DIR_META[feeds[fk].direction]).length;
     let html = '';
 
     if (!keys.length) {
       html = `<div class="list-empty"><strong>No feeds configured yet</strong>Browse the list on the left and click any feed to add it to Home Assistant.</div>`;
     } else {
+      if (unknownCount > 0) {
+        html += `<div class="warn-banner">${unknownCount} feed${unknownCount>1?'s':''} imported from the old setup wizard have incomplete configuration — use the edit button to fix them, or <button class="btn-link" data-clear-all>clear all feeds</button> to start fresh.</div>`;
+      }
       for (const fk of keys) {
         const fc = feeds[fk];
         const dot = fk.indexOf('.');
         const gpart = dot >= 0 ? fk.slice(0, dot) : fk;
         const fname = dot >= 0 ? fk.slice(dot+1) : fk;
         const en = fc.enabled !== false;
-        const tm = TYPE_META[fc.entity_type] || { label: fc.entity_type||'?', cls: '' };
-        const dm = DIR_META[fc.direction]    || { label: fc.direction||'?',   cls: '' };
+        const tm = TYPE_META[fc.entity_type] || { label: 'Not set', cls: 'type-unknown' };
+        const dm = DIR_META[fc.direction]    || { label: 'Not set', cls: 'dir-unknown'  };
         const editing = this._editFeed === fk;
 
         html += `
@@ -787,7 +814,10 @@ class AdafruitIOSyncPanel extends HTMLElement {
 
     return `
       <div class="panel">
-        <div class="panel-header">Configured Feeds <span class="count">${keys.length}</span></div>
+        <div class="panel-header">
+          Configured Feeds <span class="count">${keys.length}</span>
+          ${keys.length ? `<button class="btn-link danger-link" data-clear-all style="margin-left:auto;font-size:11px">Clear all</button>` : ''}
+        </div>
         ${html}
       </div>`;
   }
@@ -987,6 +1017,13 @@ class AdafruitIOSyncPanel extends HTMLElement {
       const newFeeds = { ...this._cfg.feeds };
       delete newFeeds[fk];
       this._save({ ...this._cfg, feeds: newFeeds });
+    }));
+
+    // Clear all feeds
+    qa('[data-clear-all]').forEach(btn => btn.addEventListener('click', () => {
+      const count = Object.keys(this._cfg.feeds || {}).length;
+      if (!confirm(`Remove all ${count} configured feeds and start fresh?`)) return;
+      this._save({ ...this._cfg, feeds: {} });
     }));
 
     // New entity inputs
