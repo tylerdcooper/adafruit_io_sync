@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 
-from aiohttp.web import FileResponse
+from aiohttp.web import Response
 from homeassistant.components.http import HomeAssistantView
 
 from .const import CONF_FEEDS, CONF_HA_TO_AIO, CONF_SYNCED_GROUPS, DOMAIN
@@ -19,7 +19,12 @@ class PanelJSView(HomeAssistantView):
     requires_auth = False
 
     async def get(self, request):
-        return FileResponse(str(_WWW / "panel.js"))
+        content = (_WWW / "panel.js").read_text(encoding="utf-8")
+        return Response(
+            body=content,
+            content_type="application/javascript",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
 
 
 class AIOSyncConfigView(HomeAssistantView):

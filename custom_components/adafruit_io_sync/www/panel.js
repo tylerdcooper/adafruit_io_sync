@@ -29,13 +29,24 @@ class AdafruitIOSyncPanel extends HTMLElement {
       ]);
       this._config = config || { synced_groups: [], feeds: {}, ha_to_aio: [] };
       this._groups = groups || {};
+    } catch (e) {
+      this._showMsg('error', '[API] ' + (e.body?.message || e.message || String(e)));
+      this._setBusy(false);
+      return;
+    }
+    try {
       this._renderAIOtoHA();
+    } catch (e) {
+      this._showMsg('error', '[AIO→HA render] ' + e.message);
+      this._setBusy(false);
+      return;
+    }
+    try {
       this._renderHAtoAIO();
     } catch (e) {
-      this._showMsg('error', 'Failed to load: ' + (e.body?.message || e.message || String(e)));
-    } finally {
-      this._setBusy(false);
+      this._showMsg('error', '[HA→AIO render] ' + e.message);
     }
+    this._setBusy(false);
   }
 
   async _save() {
