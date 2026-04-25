@@ -60,7 +60,7 @@ class AdafruitIOMQTT:
         _LOGGER.debug("Published %s → %s", value, topic)
 
     async def async_connect(self) -> None:
-        self._client = mqtt.Client()
+        self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1)
         self._client.username_pw_set(self._username, self._api_key)
         self._client.on_connect = self._on_connect
         self._client.on_message = self._on_message
