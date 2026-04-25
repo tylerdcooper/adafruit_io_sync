@@ -98,6 +98,14 @@ async def _async_setup_ha_to_aio(
 
     entity_map = {item["entity_id"]: item for item in ha_to_aio}
 
+    # Push current state immediately so AIO has data right away
+    for item in ha_to_aio:
+        state = hass.states.get(item["entity_id"])
+        if state and state.state not in ("unknown", "unavailable"):
+            await mqtt_client.async_publish(
+                item["aio_group"], item["aio_feed"], state.state
+            )
+
     async def _state_changed(event):
         entity_id = event.data["entity_id"]
         new_state = event.data.get("new_state")
