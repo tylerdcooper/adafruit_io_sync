@@ -1,0 +1,40 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Adafruit IO",
+        "description": "Enter your Adafruit IO credentials. Find your API key at **io.adafruit.com** → My Key.",
+        "data": {
+          "username": "Username",
+          "api_key": "API Key"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid username or API key.",
+      "cannot_connect": "Cannot reach Adafruit IO — check your internet connection."
+    },
+    "abort": {
+      "already_configured": "This Adafruit IO account is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Select Groups to Sync",
+        "description": "Choose which Adafruit IO feed groups to bring into Home Assistant.\n\nEach group becomes a **device**; each feed inside it becomes an **entity**.",
+        "data": {
+          "synced_groups": "Groups to sync"
+        }
+      },
+      "group_feeds": {
+        "title": "Configure feeds — {group_name}",
+        "description": "Set the entity type, sync direction, and optional unit for each feed in **{group_name}**.\n\n**Feeds in this group:** {feeds}\n\n*{remaining} group(s) left to configure after this.*\n\n**Entity types:** sensor (read-only value), switch (on/off), number (slider/input), text (string)\n**Direction:** *AIO → HA* means HA is read-only. *Bidirectional* lets HA write back to AIO.\n**Unit** is shown in the HA UI and is only meaningful for sensor and number types.",
+        "data": {}
+      }
+    },
+    "abort": {
+      "no_groups": "No Adafruit IO feed groups found. Create a group at io.adafruit.com first."
+    }
+  }
+}

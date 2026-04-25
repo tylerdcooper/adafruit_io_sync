@@ -1,0 +1,11 @@
+{
+  "domain": "adafruit_io_sync",
+  "name": "Adafruit IO Sync",
+  "version": "1.0.0",
+  "config_flow": true,
+  "documentation": "https://github.com/your-username/adafruit_io_sync",
+  "requirements": ["paho-mqtt==1.6.1"],
+  "dependencies": [],
+  "iot_class": "cloud_push",
+  "codeowners": []
+}
