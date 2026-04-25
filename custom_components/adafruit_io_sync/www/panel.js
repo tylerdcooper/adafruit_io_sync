@@ -878,7 +878,13 @@ class AdafruitIOSyncPanel extends HTMLElement {
 
     // Search
     const s = q('[data-search]');
-    if (s) s.addEventListener('input', e => { this._filter = e.target.value; this._render(); });
+    if (s) s.addEventListener('input', e => {
+      this._filter = e.target.value;
+      const cursor = e.target.selectionStart;
+      this._render();
+      const ns = this.shadowRoot.querySelector('[data-search]');
+      if (ns) { ns.focus(); ns.setSelectionRange(cursor, cursor); }
+    });
 
     // Group expand
     qa('.group-header').forEach(el => el.addEventListener('click', () => {
