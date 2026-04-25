@@ -204,6 +204,7 @@ const STYLES = `
 }
 .feed-dot.added-dot { background: #4caf50; }
 .feed-label { flex: 1; }
+.feed-key-hint { font-size: 11px; color: var(--tx2); margin-left: 5px; }
 .feed-added-chip {
   font-size: 10px;
   font-weight: 600;
@@ -686,10 +687,15 @@ class AdafruitIOSyncPanel extends HTMLElement {
             const full = `${gk}.${fk}`;
             const added = full in (this._cfg.feeds||{});
             const formOpen = this._openFeed === full;
+            const feedName = grp.feeds[fk]?.name || fk;
+            const nameMatchesKey = feedName === fk;
             html += `
               <div class="feed-browser-item${added?' added':''}" data-fk="${esc(full)}" data-added="${added}">
                 <span class="feed-dot${added?' added-dot':''}"></span>
-                <span class="feed-label">${esc(fk)}</span>
+                <span class="feed-label">
+                  ${esc(feedName)}
+                  ${!nameMatchesKey ? `<span class="feed-key-hint">${esc(fk)}</span>` : ''}
+                </span>
                 ${added ? `<span class="feed-added-chip">added</span>` : ''}
               </div>`;
 
@@ -753,7 +759,9 @@ class AdafruitIOSyncPanel extends HTMLElement {
         const fc = feeds[fk];
         const dot = fk.indexOf('.');
         const gpart = dot >= 0 ? fk.slice(0, dot) : fk;
-        const fname = dot >= 0 ? fk.slice(dot+1) : fk;
+        const fkey = dot >= 0 ? fk.slice(dot+1) : fk;
+        // Use friendly name from coordinator data when available
+        const friendlyName = this._groups[gpart]?.feeds?.[fkey]?.name || fkey;
         const en = fc.enabled !== false;
         const tm = TYPE_META[fc.entity_type] || { label: 'Not set', cls: 'type-unknown' };
         const dm = DIR_META[fc.direction]    || { label: 'Not set', cls: 'dir-unknown'  };
@@ -767,7 +775,7 @@ class AdafruitIOSyncPanel extends HTMLElement {
               <div class="toggle-thumb"></div>
             </label>
             <div class="feed-info">
-              <div class="feed-key"><span class="grp">${esc(gpart)} / </span>${esc(fname)}</div>
+              <div class="feed-key"><span class="grp">${esc(gpart)} / </span>${esc(friendlyName)}${friendlyName !== fkey ? `<span class="feed-key-hint">${esc(fkey)}</span>` : ''}</div>
               <div class="feed-meta">
                 <span class="badge ${tm.cls}">${esc(tm.label)}</span>
                 <span class="badge ${dm.cls}">${esc(dm.label)}</span>
