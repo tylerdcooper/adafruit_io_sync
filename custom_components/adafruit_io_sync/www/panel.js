@@ -452,6 +452,20 @@ const STYLES = `
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+.error-banner {
+  background: rgba(198,40,40,0.12);
+  border: 1px solid rgba(198,40,40,0.4);
+  border-radius: var(--rad-s);
+  color: #ef9a9a;
+  padding: 12px 16px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .loading-state {
   padding: 80px 20px;
   text-align: center;
@@ -519,6 +533,7 @@ class AdafruitIOSyncPanel extends HTMLElement {
     this._filter     = '';
     this._loading    = true;
     this._saving     = false;
+    this._loadError  = null;
     this._addForm    = { entity_type: 'sensor', direction: 'aio_to_ha', unit: '' };
     this._editForm   = {};
     this._newEnt     = { entity_id: '', aio_group: '', aio_feed: '' };
@@ -539,15 +554,24 @@ class AdafruitIOSyncPanel extends HTMLElement {
 
   async _loadData() {
     this._loading = true;
+    this._loadError = null;
     this._render();
     try {
       const [cr, gr] = await Promise.all([
         fetch('/api/adafruit_io_sync/config'),
         fetch('/api/adafruit_io_sync/groups'),
       ]);
-      if (cr.ok) this._cfg = await cr.json();
+      if (cr.status === 404) {
+        this._loadError = 'Integration not configured. Go to Settings → Integrations and set up Adafruit IO Sync.';
+      } else if (!cr.ok) {
+        this._loadError = `Config API error ${cr.status} — try reloading the integration.`;
+      } else {
+        this._cfg = await cr.json();
+      }
       if (gr.ok) this._groups = await gr.json();
-    } catch { this._showToast('Failed to load data', true); }
+    } catch (e) {
+      this._loadError = `Network error: ${e.message}`;
+    }
     this._loading = false;
     this._render();
   }
@@ -596,6 +620,7 @@ class AdafruitIOSyncPanel extends HTMLElement {
           </div>
         </div>
         <div class="app-body">
+          ${this._loadError ? `<div class="error-banner">${esc(this._loadError)} <button class="btn btn-ghost btn-sm" data-reload-groups style="margin-left:12px">Retry</button></div>` : ''}
           ${this._loading
             ? `<div class="loading-state"><div class="spinner"></div>Loading…</div>`
             : this._tab === 'aio_to_ha' ? this._tplAIOtoHA() : this._tplHAtoAIO()
