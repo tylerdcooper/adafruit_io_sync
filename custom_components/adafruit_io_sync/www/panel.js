@@ -557,20 +557,19 @@ class AdafruitIOSyncPanel extends HTMLElement {
     this._loadError = null;
     this._render();
     try {
-      const [cr, gr] = await Promise.all([
-        fetch('/api/adafruit_io_sync/config'),
-        fetch('/api/adafruit_io_sync/groups'),
+      const [cfg, grp] = await Promise.all([
+        this._hass.callApi('GET', 'adafruit_io_sync/config'),
+        this._hass.callApi('GET', 'adafruit_io_sync/groups'),
       ]);
-      if (cr.status === 404) {
-        this._loadError = 'Integration not configured. Go to Settings → Integrations and set up Adafruit IO Sync.';
-      } else if (!cr.ok) {
-        this._loadError = `Config API error ${cr.status} — try reloading the integration.`;
-      } else {
-        this._cfg = await cr.json();
-      }
-      if (gr.ok) this._groups = await gr.json();
+      this._cfg    = cfg  || { feeds: {}, ha_to_aio: [] };
+      this._groups = grp  || {};
     } catch (e) {
-      this._loadError = `Network error: ${e.message}`;
+      const msg = String(e?.message || e);
+      if (msg.includes('not_found') || msg.includes('404')) {
+        this._loadError = 'Integration not configured. Go to Settings → Integrations and set up Adafruit IO Sync.';
+      } else {
+        this._loadError = `Failed to load: ${msg}`;
+      }
     }
     this._loading = false;
     this._render();
@@ -580,16 +579,13 @@ class AdafruitIOSyncPanel extends HTMLElement {
     this._saving = true;
     this._render();
     try {
-      const res = await fetch('/api/adafruit_io_sync/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(options),
-      });
-      if (!res.ok) throw new Error();
+      await this._hass.callApi('POST', 'adafruit_io_sync/config', options);
       this._cfg = options;
       this._openFeed = null; this._editFeed = null; this._editEnt = null;
       this._showToast('Saved — reloading integration…');
-    } catch { this._showToast('Save failed', true); }
+    } catch (e) {
+      this._showToast(`Save failed: ${e?.message || e}`, true);
+    }
     this._saving = false;
     this._render();
   }
