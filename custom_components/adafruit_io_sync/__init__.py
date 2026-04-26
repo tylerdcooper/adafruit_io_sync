@@ -267,7 +267,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         webcomponent_name="adafruit-io-sync-panel",
         sidebar_title="AIO Sync",
         sidebar_icon="mdi:cloud-sync",
-        module_url=f"{_STATIC_PATH}/panel.js?v=1.5.2",
+        module_url=f"{_STATIC_PATH}/panel.js?v=1.5.3",
         embed_iframe=False,
         require_admin=True,
     )
@@ -366,12 +366,16 @@ async def _async_setup_ha_to_aio(
 
         def _make_attr_handler(eid: str, svc: tuple, param: str, decode):
             async def _handle_attr(value: str) -> None:
+                _LOGGER.info("AIO→HA attr: %s firing with value=%r, calling %s(%s=%s)",
+                             eid, value, svc, param, value)
                 try:
                     svc_domain, svc_name = svc
+                    decoded = decode(value)
                     await hass.services.async_call(
                         svc_domain, svc_name,
-                        {"entity_id": eid, param: decode(value)}
+                        {"entity_id": eid, param: decoded}
                     )
+                    _LOGGER.info("AIO→HA attr: %s.%s(%s=%s) succeeded", svc_domain, svc_name, param, decoded)
                 except Exception as exc:
                     _LOGGER.warning(
                         "AIO→HA attr bidir: %s.%s error: %s", eid, param, exc
@@ -382,11 +386,12 @@ async def _async_setup_ha_to_aio(
             if not ac["writable"]:
                 continue
             attr_feed = f"{item['aio_feed']}-{ac['suffix']}"
+            full_topic = f"{item['aio_group']}.{attr_feed}"
             mqtt_client.subscribe(
                 item["aio_group"], attr_feed,
                 _make_attr_handler(entity_id, ac["service"], ac["param"], ac["decode"])
             )
-            _LOGGER.debug("AIO→HA attr bidir: %s.%s → %s", item["aio_group"], attr_feed, entity_id)
+            _LOGGER.info("AIO→HA bidir: subscribed to %s → %s(%s)", full_topic, ac["service"], ac["param"])
 
     # Step 2 — push current state + attributes (echoes will be received and
     # discarded cleanly since subscriptions are already active above).

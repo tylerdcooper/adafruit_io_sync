@@ -95,20 +95,23 @@ class AdafruitIOMQTT:
 
     def _on_message(self, client, userdata, msg):
         topic = msg.topic
+        value = msg.payload.decode("utf-8")
+
+        _LOGGER.info("MQTT ← %s = %r  (pending=%s, registered=%s)",
+                     topic, value,
+                     topic in self._pending_publishes,
+                     topic in self._callbacks)
 
         if topic in self._pending_publishes:
-            # This echo is our own publish; discard it
             self._pending_publishes.discard(topic)
             return
 
         callback = self._callbacks.get(topic)
         if callback is None:
+            _LOGGER.warning("MQTT: no callback for topic %s — registered topics: %s",
+                            topic, list(self._callbacks.keys()))
             return
 
-        value = msg.payload.decode("utf-8")
-        _LOGGER.debug("MQTT message on %s: %s", topic, value)
-
-        # Dispatch back to the HA event loop safely from the paho thread
         asyncio.run_coroutine_threadsafe(callback(value), self._hass.loop)
 
     def _on_disconnect(self, client, userdata, rc):
