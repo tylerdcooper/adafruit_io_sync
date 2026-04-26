@@ -174,6 +174,10 @@ const CSS = `
 .feed-row-b.is-added { opacity: .45; pointer-events: none; }
 .feed-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--acc); flex-shrink: 0; }
 .feed-dot.done { background: #4caf50; }
+.chip { display:inline-flex; align-items:center; padding:1px 7px; border-radius:8px; font-size:10px; font-weight:700; letter-spacing:.4px; text-transform:uppercase; white-space:nowrap; }
+.chip-added { background:rgba(76,175,80,.14); color:#66bb6a; }
+.chip-ha    { background:rgba(255,152,0,.14);  color:#ffa726; }
+.chip-loop  { background:rgba(244,67,54,.14);  color:#ef5350; }
 .feed-name-b { flex: 1; font-size: 13px; min-width: 0; }
 .feed-name-b .fn { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .feed-name-b .fk { display: block; font-size: 10px; color: var(--tx2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -569,6 +573,9 @@ class AdafruitIOSyncPanel extends HTMLElement {
     if (!gkeys.length)
       return `<div class="panel"><div class="empty">No Adafruit IO groups found.<br>Check your connection.<br><br><button class="btn btn-ghost btn-sm" data-retry>Retry</button></div></div>`;
 
+    // Build set of feed keys currently being pushed FROM HA to AIO
+    const haToAioKeys = new Set((this._cfg.ha_to_aio||[]).map(i => `${i.aio_group}.${i.aio_feed}`));
+
     let rows = '';
     for (const gk of gkeys) {
       const grp = this._groups[gk];
@@ -599,18 +606,32 @@ class AdafruitIOSyncPanel extends HTMLElement {
 
       if (open || q) {
         for (const fk of vis) {
-          const full  = `${gk}.${fk}`;
-          const added = full in (this._cfg.feeds||{});
-          const fname = this._feedName(gk, fk);
-          const fkey  = fname !== fk ? fk : null;
+          const full      = `${gk}.${fk}`;
+          const added     = full in (this._cfg.feeds||{});
+          const fromHA    = haToAioKeys.has(full);
+          const loopRisk  = added && fromHA;
+          const fname     = this._feedName(gk, fk);
+          const fkey      = fname !== fk ? fk : null;
+
+          let rightEl;
+          if (loopRisk) {
+            rightEl = `<span class="chip chip-loop" title="Same feed is in both tabs — possible loop">⚠ Loop</span>`;
+          } else if (fromHA) {
+            rightEl = `<span class="chip chip-ha" title="This feed is pushed from HA to AIO — adding it here would create a loop">HA</span>`;
+          } else if (added) {
+            rightEl = `<span class="chip chip-added">Added</span>`;
+          } else {
+            rightEl = `<button class="add-btn" data-fadd="${esc(full)}" title="Add to Home Assistant">${IC.plus}</button>`;
+          }
+
           rows += `
-            <div class="feed-row-b${added?' is-added':''}" data-fk="${esc(full)}" data-added="${added}">
-              <span class="feed-dot${added?' done':''}"></span>
+            <div class="feed-row-b${(added||fromHA)?' is-added':''}" data-fk="${esc(full)}" data-added="${added}">
+              <span class="feed-dot${added?' done':fromHA?' done':''}"></span>
               <span class="feed-name-b">
                 <span class="fn">${esc(fname)}</span>
                 ${fkey ? `<span class="fk">${esc(fkey)}</span>` : ''}
               </span>
-              ${!added ? `<button class="add-btn" data-fadd="${esc(full)}" title="Add to Home Assistant">${IC.plus}</button>` : ''}
+              ${rightEl}
             </div>`;
         }
       }
@@ -630,6 +651,7 @@ class AdafruitIOSyncPanel extends HTMLElement {
   _tplConfigured() {
     const feeds = this._cfg.feeds || {};
     const keys  = Object.keys(feeds);
+    const haToAioKeys = new Set((this._cfg.ha_to_aio||[]).map(i => `${i.aio_group}.${i.aio_feed}`));
 
     // Group by device (group key)
     const byGroup = {};
@@ -663,14 +685,15 @@ class AdafruitIOSyncPanel extends HTMLElement {
           </div>`;
 
         for (const fk of fkList) {
-          const fc      = feeds[fk];
-          const dot     = fk.indexOf('.');
-          const feedKey = dot >= 0 ? fk.slice(dot+1) : fk;
-          const fname   = this._feedName(gk, feedKey);
-          const enabled = fc.enabled !== false;
-          const tm      = TYPE_META[fc.entity_type] || { label:'Not set', cls:'type-unknown' };
-          const dm      = DIR_META[fc.direction]    || { label:'Not set', cls:'dir-unknown'  };
-          const editing = this._editFeed === fk;
+          const fc        = feeds[fk];
+          const dot       = fk.indexOf('.');
+          const feedKey   = dot >= 0 ? fk.slice(dot+1) : fk;
+          const fname     = this._feedName(gk, feedKey);
+          const enabled   = fc.enabled !== false;
+          const fromHA    = haToAioKeys.has(fk);
+          const tm        = TYPE_META[fc.entity_type] || { label:'Not set', cls:'type-unknown' };
+          const dm        = DIR_META[fc.direction]    || { label:'Not set', cls:'dir-unknown'  };
+          const editing   = this._editFeed === fk;
 
           body += `
             <div class="feed-row-r${enabled?'':' disabled'}">
@@ -685,6 +708,7 @@ class AdafruitIOSyncPanel extends HTMLElement {
                   <span class="badge ${tm.cls}">${esc(tm.label)}</span>
                   <span class="badge ${dm.cls}">${esc(dm.label)}</span>
                   ${fc.unit ? `<span class="badge unit-badge">${esc(fc.unit)}</span>` : ''}
+                  ${fromHA ? `<span class="chip chip-loop" title="Same feed is in HA→AIO — possible loop">⚠ Loop</span>` : ''}
                 </div>
               </div>
               <div class="feed-actions-r">
