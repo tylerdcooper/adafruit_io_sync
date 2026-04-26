@@ -14,13 +14,33 @@ const DIR_META = {
   bidirectional: { label:'⇄ Bidirectional',  cls:'dir-bidir'  },
 };
 
-// Mirrors DOMAIN_ATTR_MAP in __init__.py — for display only
+// Mirrors DOMAIN_ATTR_MAP in __init__.py — for display only (where supported by entity)
 const HA_ATTR_FEEDS = {
-  light:        [{ s:'brightness', label:'Brightness %' }, { s:'color-temp', label:'Color Temp' }],
-  fan:          [{ s:'speed',      label:'Speed %' }],
-  climate:      [{ s:'target-temp', label:'Target Temp' }, { s:'current-temp', label:'Current Temp' }],
-  cover:        [{ s:'position',   label:'Position %' }],
-  media_player: [{ s:'volume',     label:'Volume %' }],
+  light:        [{ s:'brightness',       label:'Brightness %' },
+                 { s:'color-temp',       label:'Color Temp' }],
+  fan:          [{ s:'speed',            label:'Speed %' },
+                 { s:'oscillating',      label:'Oscillating' }],
+  climate:      [{ s:'target-temp',      label:'Target Temp' },
+                 { s:'current-temp',     label:'Current Temp' },
+                 { s:'target-humidity',  label:'Target Humidity' },
+                 { s:'current-humidity', label:'Humidity' }],
+  cover:        [{ s:'position',         label:'Position %' },
+                 { s:'tilt',             label:'Tilt %' }],
+  media_player: [{ s:'volume',           label:'Volume %' },
+                 { s:'media-title',      label:'Media Title' },
+                 { s:'media-artist',     label:'Artist' }],
+  vacuum:       [{ s:'battery',          label:'Battery %' },
+                 { s:'fan-speed',        label:'Fan Speed' }],
+  water_heater: [{ s:'current-temp',     label:'Current Temp' },
+                 { s:'target-temp',      label:'Target Temp' }],
+  humidifier:   [{ s:'target-humidity',  label:'Target Humidity' },
+                 { s:'current-humidity', label:'Humidity' }],
+  weather:      [{ s:'temperature',      label:'Temperature' },
+                 { s:'humidity',         label:'Humidity' },
+                 { s:'wind-speed',       label:'Wind Speed' },
+                 { s:'pressure',         label:'Pressure' },
+                 { s:'wind-bearing',     label:'Wind Bearing' }],
+  valve:        [{ s:'position',         label:'Position %' }],
 };
 
 // ─── Icons ────────────────────────────────────────────────────
