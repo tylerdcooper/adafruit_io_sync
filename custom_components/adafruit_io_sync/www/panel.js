@@ -1,4 +1,4 @@
-// Adafruit IO Sync Panel — v1.5.0
+// Adafruit IO Sync Panel — v1.6.0
 
 const _ESC = { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' };
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => _ESC[c]);
@@ -44,8 +44,25 @@ const HA_ATTR_FEEDS = {
 };
 
 // ─── Icons ────────────────────────────────────────────────────
+// Adafruit IO logo — the 5 interconnected ovals that form the inner symbol
+const AIO_LOGO = (size=22) => `<svg width="${size}" height="${size}" viewBox="1330 695 480 480" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+  <path d="M1588.04,996.847C1570.84,1005.55 1574.43,1046.96 1596.03,1089.21C1617.62,1131.42 1649.1,1158.55 1666.28,1149.85C1683.51,1141.08 1679.81,1099.69 1658.25,1057.48C1636.57,1015.27 1605.2,988.101 1588.04,996.847Z"/>
+  <path d="M1431.9,1021.94C1398.32,1055.49 1382.16,1093.71 1395.8,1107.34C1409.43,1120.92 1447.74,1104.78 1481.3,1071.18C1514.88,1037.61 1531.06,999.391 1517.4,985.762C1503.75,972.176 1465.46,988.366 1431.9,1021.94Z"/>
+  <path d="M1699.9,885.358C1652.94,892.845 1617.36,914.309 1620.42,933.277C1623.42,952.245 1663.92,961.707 1710.86,954.176C1757.82,946.754 1793.42,925.247 1790.36,906.257C1787.36,887.289 1746.86,877.936 1699.9,885.358Z"/>
+  <path d="M1506.14,915.368C1514.88,898.223 1487.61,866.841 1445.22,845.334C1402.91,823.914 1361.43,820.311 1352.76,837.456C1344.03,854.601 1371.24,886.026 1413.61,907.49C1456.01,928.932 1497.4,932.469 1506.14,915.368Z"/>
+  <path d="M1617.63,803.475C1625.07,756.619 1615.65,716.188 1596.58,713.236C1577.52,710.285 1556.12,745.833 1548.75,792.689C1541.33,839.479 1550.77,879.911 1569.76,882.927C1588.86,885.922 1610.3,850.374 1617.63,803.475Z"/>
+</svg>`;
+
+// Home Assistant logo
+const HA_LOGO = (size=20) => `<svg width="${size}" height="${size}" viewBox="80 81 240 236" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M320 301.762C320 310.012 313.25 316.762 305 316.762H95C86.75 316.762 80 310.012 80 301.762V211.762C80 203.512 84.77 191.993 90.61 186.153L189.39 87.3725C195.22 81.5425 204.77 81.5425 210.6 87.3725L309.39 186.162C315.22 191.992 320 203.522 320 211.772V301.772Z" fill="rgba(255,255,255,0.15)"/>
+  <path d="M309.39 186.153L210.61 87.3725C204.78 81.5425 195.23 81.5425 189.4 87.3725L90.61 186.153C84.78 191.983 80 203.512 80 211.762V301.762C80 310.012 86.75 316.762 95 316.762H187.27L146.64 276.132C144.55 276.852 142.32 277.262 140 277.262C128.7 277.262 119.5 268.062 119.5 256.762C119.5 245.462 128.7 236.262 140 236.262C151.3 236.262 160.5 245.462 160.5 256.762C160.5 259.092 160.09 261.322 159.37 263.412L191 295.042V179.162C184.2 175.822 179.5 168.842 179.5 160.772C179.5 149.472 188.7 140.272 200 140.272C211.3 140.272 220.5 149.472 220.5 160.772C220.5 168.842 215.8 175.822 209 179.162V260.432L240.46 228.972C239.84 227.012 239.5 224.932 239.5 222.772C239.5 211.472 248.7 202.272 260 202.272C271.3 202.272 280.5 211.472 280.5 222.772C280.5 234.072 271.3 243.272 260 243.272C257.5 243.272 255.12 242.802 252.91 241.982L209 285.892V316.772H305C313.25 316.772 320 310.022 320 301.772V211.772C320 203.522 315.23 192.002 309.39 186.162Z" fill="#18BCF2"/>
+</svg>`;
+
+// Small arrow between logos in tabs
+const TAB_ARROW = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="opacity:.7"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>`;
+
 const IC = {
-  cloud: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`,
   plus:  `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>`,
   edit:  `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5Z"/></svg>`,
   trash: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`,
@@ -92,7 +109,7 @@ const CSS = `
   flex: 1;
   min-width: 160px;
 }
-.app-title svg { color: var(--acc); }
+.app-title .aio-logo { color: var(--acc); }
 .tabs {
   display: flex;
   gap: 3px;
@@ -104,16 +121,20 @@ const CSS = `
   border: none;
   background: transparent;
   color: var(--tx2);
-  padding: 7px 20px;
+  padding: 7px 14px;
   border-radius: 8px;
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
   transition: all .15s;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
 .tab-btn.active { background: var(--surf); color: var(--tx1); box-shadow: 0 1px 4px rgba(0,0,0,.3); }
 .tab-btn:not(.active):hover { color: var(--tx1); }
+.tab-btn svg { flex-shrink: 0; }
 
 /* Layout */
 .app-body { padding: 20px 24px 40px; }
@@ -580,10 +601,17 @@ class AdafruitIOSyncPanel extends HTMLElement {
       <style>${CSS}</style>
       <div class="${this._saving?'saving':''}">
         <div class="app-header">
-          <div class="app-title">${IC.cloud} Adafruit IO Sync</div>
+          <div class="app-title">
+            <span class="aio-logo">${AIO_LOGO(24)}</span>
+            Adafruit IO Sync
+          </div>
           <div class="tabs">
-            <button class="tab-btn${this._tab==='aio_to_ha'?' active':''}" data-tab="aio_to_ha">AIO → HA</button>
-            <button class="tab-btn${this._tab==='ha_to_aio'?' active':''}" data-tab="ha_to_aio">HA → AIO</button>
+            <button class="tab-btn${this._tab==='aio_to_ha'?' active':''}" data-tab="aio_to_ha" title="Adafruit IO → Home Assistant">
+              ${AIO_LOGO(15)} ${TAB_ARROW} ${HA_LOGO(15)}
+            </button>
+            <button class="tab-btn${this._tab==='ha_to_aio'?' active':''}" data-tab="ha_to_aio" title="Home Assistant → Adafruit IO">
+              ${HA_LOGO(15)} ${TAB_ARROW} ${AIO_LOGO(15)}
+            </button>
           </div>
         </div>
         <div class="app-body">
