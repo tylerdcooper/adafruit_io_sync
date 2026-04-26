@@ -87,9 +87,13 @@ class AdafruitIOMQTT:
 
     def _on_connect(self, client, userdata, flags, rc):
         if rc == 0:
-            _LOGGER.info("Connected to Adafruit IO MQTT broker")
+            _LOGGER.warning("AIO_DBG MQTT connected. Re-subscribing %d topics.", len(self._callbacks))
             for topic in self._callbacks:
                 client.subscribe(topic)
+                _LOGGER.warning("AIO_DBG MQTT re-subscribed: %s", topic)
+            # Wildcard: catch ALL feed messages so we can see actual topic format
+            client.subscribe(f"{self._username}/feeds/#")
+            _LOGGER.warning("AIO_DBG MQTT wildcard subscribed: %s/feeds/#", self._username)
         else:
             _LOGGER.error("MQTT connection refused, rc=%d", rc)
 
