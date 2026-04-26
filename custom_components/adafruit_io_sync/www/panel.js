@@ -1,4 +1,4 @@
-// Adafruit IO Sync Panel — v1.3.6
+// Adafruit IO Sync Panel — v1.5.0
 
 const _ESC = { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' };
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => _ESC[c]);
@@ -12,6 +12,15 @@ const TYPE_META = {
 const DIR_META = {
   aio_to_ha:     { label:'AIO → HA',        cls:'dir-oneway' },
   bidirectional: { label:'⇄ Bidirectional',  cls:'dir-bidir'  },
+};
+
+// Mirrors DOMAIN_ATTR_MAP in __init__.py — for display only
+const HA_ATTR_FEEDS = {
+  light:        [{ s:'brightness', label:'Brightness %' }, { s:'color-temp', label:'Color Temp' }],
+  fan:          [{ s:'speed',      label:'Speed %' }],
+  climate:      [{ s:'target-temp', label:'Target Temp' }, { s:'current-temp', label:'Current Temp' }],
+  cover:        [{ s:'position',   label:'Position %' }],
+  media_player: [{ s:'volume',     label:'Volume %' }],
 };
 
 // ─── Icons ────────────────────────────────────────────────────
@@ -178,6 +187,8 @@ const CSS = `
 .chip-added { background:rgba(76,175,80,.14); color:#66bb6a; }
 .chip-ha    { background:rgba(255,152,0,.14);  color:#ffa726; }
 .chip-loop  { background:rgba(244,67,54,.14);  color:#ef5350; }
+.attr-feeds { display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; }
+.attr-chip  { font-size:10px; color:var(--tx2); background:var(--surf2); border:1px solid var(--bdr); border-radius:5px; padding:1px 6px; white-space:nowrap; }
 .feed-name-b { flex: 1; font-size: 13px; min-width: 0; }
 .feed-name-b .fn { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .feed-name-b .fk { display: block; font-size: 10px; color: var(--tx2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -868,6 +879,11 @@ class AdafruitIOSyncPanel extends HTMLElement {
           const editing  = this._editEnt === idx;
           const ef       = this._editEntForm;
           const fname    = states[item.entity_id]?.attributes?.friendly_name || '';
+          const domain   = item.entity_id.split('.')[0];
+          const attrFeeds = HA_ATTR_FEEDS[domain] || [];
+          const attrChips = attrFeeds.map(a =>
+            `<span class="attr-chip" title="${esc(item.aio_feed)}-${esc(a.s)}">${esc(a.label)}</span>`
+          ).join('');
 
           body += `
             <div class="ent-row${enabled?'':' disabled'}">
@@ -882,6 +898,7 @@ class AdafruitIOSyncPanel extends HTMLElement {
                   ${IC.arrow} ${esc(item.aio_feed)}
                   <span class="badge ${bidir?'dir-bidir':'dir-oneway'}">${bidir?'⇄ Bidirectional':'HA → AIO'}</span>
                 </div>
+                ${attrChips ? `<div class="attr-feeds">${attrChips}</div>` : ''}
               </div>
               <div class="ent-actions">
                 <button class="icon-btn" data-edit-ent="${idx}">${IC.edit}</button>

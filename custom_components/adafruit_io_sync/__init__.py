@@ -21,10 +21,88 @@ from .panel_api import AIOSyncConfigView, AIOSyncGroupsView, PanelJSView
 _LOGGER = logging.getLogger(__name__)
 _STATIC_PATH = "/adafruit_io_sync_panel"
 
+_ON_VALUES  = {"1", "on", "true", "yes"}
+_OFF_VALUES = {"0", "off", "false", "no"}
+
+# Per-domain attribute feeds: maps HA attribute key → AIO feed config.
+# encode: HA attribute value → AIO string
+# decode: AIO string → HA service parameter value
+# service: (domain, service_name) to call when AIO sends a value
+# param: service call parameter name
+# writable: whether AIO can write back to HA
+DOMAIN_ATTR_MAP: dict[str, dict[str, dict]] = {
+    "light": {
+        "brightness": {
+            "suffix":   "brightness",
+            "encode":   lambda v: str(round(v / 255 * 100)),  # 0-255 → 0-100 %
+            "service":  ("light", "turn_on"),
+            "param":    "brightness_pct",
+            "decode":   float,
+            "writable": True,
+        },
+        "color_temp_kelvin": {
+            "suffix":   "color-temp",
+            "encode":   lambda v: str(round(v)),
+            "service":  ("light", "turn_on"),
+            "param":    "color_temp_kelvin",
+            "decode":   int,
+            "writable": True,
+        },
+    },
+    "fan": {
+        "percentage": {
+            "suffix":   "speed",
+            "encode":   lambda v: str(round(v)) if v is not None else "0",
+            "service":  ("fan", "set_percentage"),
+            "param":    "percentage",
+            "decode":   int,
+            "writable": True,
+        },
+    },
+    "climate": {
+        "temperature": {
+            "suffix":   "target-temp",
+            "encode":   lambda v: str(round(v, 1)),
+            "service":  ("climate", "set_temperature"),
+            "param":    "temperature",
+            "decode":   float,
+            "writable": True,
+        },
+        "current_temperature": {
+            "suffix":   "current-temp",
+            "encode":   lambda v: str(round(v, 1)),
+            "service":  None,
+            "param":    None,
+            "decode":   None,
+            "writable": False,
+        },
+    },
+    "cover": {
+        "current_position": {
+            "suffix":   "position",
+            "encode":   lambda v: str(round(v)),
+            "service":  ("cover", "set_cover_position"),
+            "param":    "position",
+            "decode":   int,
+            "writable": True,
+        },
+    },
+    "media_player": {
+        "volume_level": {
+            # HA stores 0.0-1.0; publish as 0-100 for readability
+            "suffix":   "volume",
+            "encode":   lambda v: str(round(v * 100)),
+            "service":  ("media_player", "volume_set"),
+            "param":    "volume_level",
+            "decode":   lambda s: round(float(s) / 100, 2),
+            "writable": True,
+        },
+    },
+}
+
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Register the sidebar panel and REST API — runs once at startup."""
-    # Serve panel.js via a plain view (compatible with all HA versions)
     hass.http.register_view(PanelJSView)
     hass.http.register_view(AIOSyncConfigView)
     hass.http.register_view(AIOSyncGroupsView)
@@ -36,7 +114,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         webcomponent_name="adafruit-io-sync-panel",
         sidebar_title="AIO Sync",
         sidebar_icon="mdi:cloud-sync",
-        module_url=f"{_STATIC_PATH}/panel.js?v=1.4.6",
+        module_url=f"{_STATIC_PATH}/panel.js?v=1.5.0",
         embed_iframe=False,
         require_admin=True,
     )
@@ -85,10 +163,6 @@ async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await hass.config_entries.async_reload(entry.entry_id)
 
 
-_ON_VALUES  = {"1", "on", "true", "yes"}
-_OFF_VALUES = {"0", "off", "false", "no"}
-
-
 async def _async_setup_ha_to_aio(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -104,40 +178,67 @@ async def _async_setup_ha_to_aio(
 
     entity_map = {item["entity_id"]: item for item in active}
 
-    # Push current state immediately so AIO has data right away
+    # Push current state + attributes immediately so AIO has data right away
     for item in active:
-        state = hass.states.get(item["entity_id"])
-        if state and state.state not in ("unknown", "unavailable"):
-            await mqtt_client.async_publish(
-                item["aio_group"], item["aio_feed"], state.state
-            )
+        eid   = item["entity_id"]
+        state = hass.states.get(eid)
+        if not state or state.state in ("unknown", "unavailable"):
+            continue
+        await mqtt_client.async_publish(item["aio_group"], item["aio_feed"], state.state)
+        domain = eid.split(".")[0]
+        for attr_key, ac in DOMAIN_ATTR_MAP.get(domain, {}).items():
+            val = state.attributes.get(attr_key)
+            if val is not None:
+                await mqtt_client.async_publish(
+                    item["aio_group"], f"{item['aio_feed']}-{ac['suffix']}", ac["encode"](val)
+                )
 
-    # HA → AIO: listen for state changes
+    # HA → AIO: listen for state + attribute changes
     async def _state_changed(event):
         entity_id = event.data["entity_id"]
         new_state = event.data.get("new_state")
+        old_state = event.data.get("old_state")
         if new_state is None or new_state.state in ("unknown", "unavailable"):
             return
         config = entity_map.get(entity_id)
         if config is None:
             return
-        _LOGGER.debug(
-            "HA→AIO: %s=%s → %s.%s",
-            entity_id, new_state.state, config["aio_group"], config["aio_feed"],
-        )
-        await mqtt_client.async_publish(
-            config["aio_group"], config["aio_feed"], new_state.state,
-        )
+
+        # Publish main state only when it actually changes
+        if old_state is None or new_state.state != old_state.state:
+            _LOGGER.debug(
+                "HA→AIO: %s=%s → %s.%s",
+                entity_id, new_state.state, config["aio_group"], config["aio_feed"],
+            )
+            await mqtt_client.async_publish(
+                config["aio_group"], config["aio_feed"], new_state.state,
+            )
+
+        # Publish each attribute when its value changes
+        domain = entity_id.split(".")[0]
+        for attr_key, ac in DOMAIN_ATTR_MAP.get(domain, {}).items():
+            new_val = new_state.attributes.get(attr_key)
+            old_val = old_state.attributes.get(attr_key) if old_state else None
+            if new_val is not None and new_val != old_val:
+                attr_feed = f"{config['aio_feed']}-{ac['suffix']}"
+                _LOGGER.debug(
+                    "HA→AIO attr: %s.%s=%s → %s.%s",
+                    entity_id, attr_key, new_val, config["aio_group"], attr_feed,
+                )
+                await mqtt_client.async_publish(
+                    config["aio_group"], attr_feed, ac["encode"](new_val)
+                )
 
     unsubscribe = async_track_state_change_event(hass, list(entity_map.keys()), _state_changed)
 
-    # AIO → HA: subscribe bidirectional items and apply commands back to HA
+    # AIO → HA: subscribe bidirectional items — main feed + writable attribute feeds
     for item in active:
         if item.get("direction") != "bidirectional":
             continue
         entity_id = item["entity_id"]
-        domain = entity_id.split(".")[0]
+        domain    = entity_id.split(".")[0]
 
+        # Main on/off handler
         def _make_handler(eid: str, dom: str):
             async def _handle_aio_command(value: str) -> None:
                 val = value.strip().lower()
@@ -161,7 +262,33 @@ async def _async_setup_ha_to_aio(
             return _handle_aio_command
 
         mqtt_client.subscribe(item["aio_group"], item["aio_feed"], _make_handler(entity_id, domain))
-        _LOGGER.debug("AIO→HA bidir subscribed: %s.%s → %s", item["aio_group"], item["aio_feed"], entity_id)
+
+        # Attribute feed handlers
+        def _make_attr_handler(eid: str, svc: tuple, param: str, decode):
+            async def _handle_attr(value: str) -> None:
+                try:
+                    svc_domain, svc_name = svc
+                    await hass.services.async_call(
+                        svc_domain, svc_name,
+                        {"entity_id": eid, param: decode(value)}
+                    )
+                except Exception as exc:
+                    _LOGGER.warning(
+                        "AIO→HA attr bidir: %s.%s error: %s", eid, param, exc
+                    )
+            return _handle_attr
+
+        for attr_key, ac in DOMAIN_ATTR_MAP.get(domain, {}).items():
+            if not ac["writable"]:
+                continue
+            attr_feed = f"{item['aio_feed']}-{ac['suffix']}"
+            mqtt_client.subscribe(
+                item["aio_group"], attr_feed,
+                _make_attr_handler(entity_id, ac["service"], ac["param"], ac["decode"])
+            )
+            _LOGGER.debug(
+                "AIO→HA attr bidir: %s.%s → %s", item["aio_group"], attr_feed, entity_id
+            )
 
     return unsubscribe
 
@@ -175,7 +302,7 @@ def _aio_key(name: str) -> str:
 
 
 async def _async_ensure_aio_feeds(entry: ConfigEntry, ha_to_aio: list[dict]) -> None:
-    """Create any AIO groups or feeds that don't exist yet."""
+    """Create any AIO groups or feeds (including attribute feeds) that don't exist yet."""
     username = entry.data[CONF_AIO_USERNAME]
     api_key  = entry.data[CONF_AIO_API_KEY]
     headers  = {"X-AIO-Key": api_key, "Content-Type": "application/json"}
@@ -198,14 +325,23 @@ async def _async_ensure_aio_feeds(entry: ConfigEntry, ha_to_aio: list[dict]) -> 
         for item in ha_to_aio:
             group_key = _aio_key(item["aio_group"])
             feed_key  = _aio_key(item["aio_feed"])
-            async with session.get(
-                f"{AIO_BASE_URL}/{username}/feeds/{group_key}.{feed_key}",
-                headers=headers,
-            ) as resp:
-                if resp.status == 404:
-                    await session.post(
-                        f"{AIO_BASE_URL}/{username}/groups/{group_key}/feeds",
-                        headers=headers,
-                        json={"feed": {"name": feed_key}},
-                    )
-                    _LOGGER.info("Created AIO feed '%s.%s'", group_key, feed_key)
+            domain    = item["entity_id"].split(".")[0]
+
+            # All feeds for this entity: main + attribute feeds
+            feeds_to_ensure = [feed_key] + [
+                f"{feed_key}-{ac['suffix']}"
+                for ac in DOMAIN_ATTR_MAP.get(domain, {}).values()
+            ]
+
+            for fk in feeds_to_ensure:
+                async with session.get(
+                    f"{AIO_BASE_URL}/{username}/feeds/{group_key}.{fk}",
+                    headers=headers,
+                ) as resp:
+                    if resp.status == 404:
+                        await session.post(
+                            f"{AIO_BASE_URL}/{username}/groups/{group_key}/feeds",
+                            headers=headers,
+                            json={"feed": {"name": fk}},
+                        )
+                        _LOGGER.info("Created AIO feed '%s.%s'", group_key, fk)
