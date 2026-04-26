@@ -254,6 +254,64 @@ DOMAIN_ATTR_MAP: dict[str, dict[str, dict]] = {
 }
 
 
+def _register_frontend_icon(hass: HomeAssistant, url: str) -> bool:
+    """Inject a JS module URL into HA's frontend page so the sidebar icon loads.
+
+    HA has changed this API several times.  We try every known mechanism in
+    order from newest to oldest, then fall back to direct hass.data surgery.
+    Returns True if we found a working method.
+    """
+    import importlib
+    fe = importlib.import_module("homeassistant.components.frontend")
+
+    # 1. Public API — name varies by HA version
+    for fn_name in ("add_extra_module_url", "add_extra_html_url"):
+        fn = getattr(fe, fn_name, None)
+        if fn is None:
+            continue
+        try:
+            fn(hass, url) if fn_name != "add_extra_html_url" else fn(hass, url, False)
+            _LOGGER.info("AIO icon: registered via fe.%s", fn_name)
+            return True
+        except Exception as err:
+            _LOGGER.debug("AIO icon: fe.%s failed: %s", fn_name, err)
+
+    # 2. Direct hass.data manipulation — HA stores extra module URLs in a set
+    #    under a key constant.  Try every plausible name.
+    for data_key_attr in ("DATA_EXTRA_MODULE_URL", "DATA_EXTRA_HTML_URL"):
+        key = getattr(fe, data_key_attr, None)
+        if key is None:
+            continue
+        if key not in hass.data:
+            hass.data[key] = set()
+        hass.data[key].add(url)
+        _LOGGER.info("AIO icon: injected via hass.data[%s] (const %s)", key, data_key_attr)
+        return True
+
+    # 3. Last resort: scan hass.data for a set that looks like it holds frontend URLs
+    for key, val in list(hass.data.items()):
+        if not (isinstance(key, str) and isinstance(val, set)):
+            continue
+        if "frontend" in key and ("module" in key or "html" in key or "url" in key):
+            val.add(url)
+            _LOGGER.info("AIO icon: injected via hass.data[%s] (scan)", key)
+            return True
+
+    # 4. Blind create — frontend may pick it up on next page render
+    fallback_key = "frontend_extra_module_url"
+    if fallback_key not in hass.data:
+        hass.data[fallback_key] = {url}
+        _LOGGER.info("AIO icon: created hass.data[%s] (blind create)", fallback_key)
+        return True
+
+    _LOGGER.warning(
+        "AIO icon: could not find a supported HA API to register the custom icon. "
+        "Sidebar will show mdi:infinity. Available frontend attrs: %s",
+        [a for a in dir(fe) if "extra" in a.lower() or "module" in a.lower()],
+    )
+    return False
+
+
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Register the sidebar panel and REST API — runs once at startup."""
     hass.http.register_view(PanelJSView)
@@ -261,27 +319,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     hass.http.register_view(AIOSyncConfigView)
     hass.http.register_view(AIOSyncGroupsView)
 
-    # Try to load the custom icon registration script globally so the sidebar
-    # shows the Adafruit IO logo. HA renamed this API across versions — try both.
     icon_url = f"{_STATIC_PATH}/icons.js"
-    icon_registered = False
-    for fn_name in ("add_extra_module_url", "add_extra_html_url"):
-        try:
-            import importlib
-            frontend_mod = importlib.import_module("homeassistant.components.frontend")
-            fn = getattr(frontend_mod, fn_name, None)
-            if fn is None:
-                continue
-            if fn_name == "add_extra_html_url":
-                fn(hass, icon_url, False)
-            else:
-                fn(hass, icon_url)
-            icon_registered = True
-            _LOGGER.debug("Registered AIO custom icon via %s", fn_name)
-            break
-        except Exception:
-            continue
-
+    icon_registered = _register_frontend_icon(hass, icon_url)
     sidebar_icon = "adafruit-io:logo" if icon_registered else "mdi:infinity"
 
     from homeassistant.components import panel_custom
@@ -291,7 +330,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         webcomponent_name="adafruit-io-sync-panel",
         sidebar_title="AIO Sync",
         sidebar_icon=sidebar_icon,
-        module_url=f"{_STATIC_PATH}/panel.js?v=1.6.3",
+        module_url=f"{_STATIC_PATH}/panel.js?v=1.6.4",
         embed_iframe=False,
         require_admin=True,
     )
