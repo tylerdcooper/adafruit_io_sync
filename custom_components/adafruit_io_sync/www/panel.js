@@ -589,18 +589,22 @@ class AdafruitIOSyncPanel extends HTMLElement {
         : fkeys;
       if (q && !vis.length) continue;
 
-      const open = this._expanded.has(gk);
-      const nAdded   = fkeys.filter(fk => `${gk}.${fk}` in (this._cfg.feeds||{})).length;
-      const nUnadded = fkeys.length - nAdded;
-      const countTxt = nAdded ? `${nAdded}/${fkeys.length}` : `${fkeys.length}`;
+      const open      = this._expanded.has(gk);
+      const nAdded    = fkeys.filter(fk => `${gk}.${fk}` in (this._cfg.feeds||{})).length;
+      // Feeds that can actually be added (not already added AND not HA-originated)
+      const nAddable  = fkeys.filter(fk => {
+        const full = `${gk}.${fk}`;
+        return !(full in (this._cfg.feeds||{})) && !haToAioKeys.has(full);
+      }).length;
+      const countTxt  = nAdded ? `${nAdded}/${fkeys.length}` : `${fkeys.length}`;
 
       rows += `
         <div class="grp-row" data-gk="${esc(gk)}">
           <span class="grp-chev${open?' open':''}">${IC.chev}</span>
           <span class="grp-name">${esc(grp.name||gk)}</span>
           <span class="grp-count">${countTxt}</span>
-          ${nUnadded > 0
-            ? `<button class="add-btn" data-gadd="${esc(gk)}" title="Add all ${nUnadded} feeds">${IC.plus}</button>`
+          ${nAddable > 0
+            ? `<button class="add-btn" data-gadd="${esc(gk)}" title="Add ${nAddable} feed${nAddable===1?'':'s'}">${IC.plus}</button>`
             : ''}
         </div>`;
 
@@ -962,10 +966,12 @@ class AdafruitIOSyncPanel extends HTMLElement {
       const gk  = btn.dataset.gadd;
       const grp = this._groups[gk];
       if (!grp) return;
+      const haToAioKeys = new Set((this._cfg.ha_to_aio||[]).map(i => `${i.aio_group}.${i.aio_feed}`));
       const newFeeds = { ...this._cfg.feeds };
       for (const fk of Object.keys(grp.feeds||{})) {
         const full = `${gk}.${fk}`;
-        if (!(full in newFeeds)) newFeeds[full] = { entity_type:'sensor', direction:'aio_to_ha', unit:'', enabled:true };
+        if (!(full in newFeeds) && !haToAioKeys.has(full))
+          newFeeds[full] = { entity_type:'sensor', direction:'aio_to_ha', unit:'', enabled:true };
       }
       this._save({ ...this._cfg, feeds: newFeeds });
     }));
