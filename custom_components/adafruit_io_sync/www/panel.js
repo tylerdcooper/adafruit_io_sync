@@ -717,6 +717,7 @@ class AdafruitIOSyncPanel extends HTMLElement {
     } else {
       list.forEach((item, idx) => {
         const enabled = item.enabled !== false;
+        const bidir   = item.direction === 'bidirectional';
         const editing = this._editEnt === idx;
         const ef = this._editEntForm;
         rows += `
@@ -728,7 +729,10 @@ class AdafruitIOSyncPanel extends HTMLElement {
             </label>
             <div class="ent-info">
               <div class="ent-id">${esc(item.entity_id)}</div>
-              <div class="ent-dest">${IC.arrow} ${esc(item.aio_group)}.${esc(item.aio_feed)}</div>
+              <div class="ent-dest">
+                ${IC.arrow} ${esc(item.aio_group)}.${esc(item.aio_feed)}
+                <span class="badge ${bidir?'dir-bidir':'dir-oneway'}" style="margin-left:4px">${bidir?'⇄ Bidirectional':'HA → AIO'}</span>
+              </div>
             </div>
             <div class="ent-actions">
               <button class="icon-btn" data-edit-ent="${idx}">${IC.edit}</button>
@@ -736,6 +740,7 @@ class AdafruitIOSyncPanel extends HTMLElement {
             </div>
           </div>`;
         if (editing) {
+          const curDir = ef.direction !== undefined ? ef.direction : (item.direction || 'ha_to_aio');
           rows += `
             <div class="ent-edit-form">
               <div class="form-row">
@@ -747,6 +752,15 @@ class AdafruitIOSyncPanel extends HTMLElement {
               <div class="form-row">
                 <div class="form-field"><label>AIO Group</label><input type="text" value="${esc(ef.aio_group!==undefined?ef.aio_group:item.aio_group)}" data-ee-grp></div>
                 <div class="form-field"><label>AIO Feed</label><input type="text" value="${esc(ef.aio_feed!==undefined?ef.aio_feed:item.aio_feed)}" data-ee-feed></div>
+              </div>
+              <div class="form-row">
+                <div class="form-field" style="flex:1">
+                  <label>Direction</label>
+                  <select data-ee-dir>
+                    <option value="ha_to_aio"${curDir==='ha_to_aio'?' selected':''}>HA → AIO only</option>
+                    <option value="bidirectional"${curDir==='bidirectional'?' selected':''}>⇄ Bidirectional</option>
+                  </select>
+                </div>
               </div>
               <div style="display:flex;gap:8px;justify-content:flex-end">
                 <button class="btn btn-ghost btn-sm" data-ee-cancel>Cancel</button>
@@ -771,6 +785,13 @@ class AdafruitIOSyncPanel extends HTMLElement {
           <div class="form-row">
             <div class="form-field"><label>AIO Group</label><input type="text" placeholder="home" value="${esc(ne.aio_group)}" data-ne-grp></div>
             <div class="form-field"><label>AIO Feed</label><input type="text" placeholder="temperature" value="${esc(ne.aio_feed)}" data-ne-feed></div>
+            <div class="form-field">
+              <label>Direction</label>
+              <select data-ne-dir>
+                <option value="ha_to_aio"${(ne.direction||'ha_to_aio')==='ha_to_aio'?' selected':''}>HA → AIO only</option>
+                <option value="bidirectional"${ne.direction==='bidirectional'?' selected':''}>⇄ Bidirectional</option>
+              </select>
+            </div>
             <div style="display:flex;align-items:flex-end"><button class="btn btn-primary" data-ne-add>${IC.plus} Add</button></div>
           </div>
         </div>
@@ -896,19 +917,22 @@ class AdafruitIOSyncPanel extends HTMLElement {
 
     // ── HA→AIO ──────────────────────────────────────────────────
     const neEid = $('[data-ne-eid]'), neGrp = $('[data-ne-grp]'), neFeed = $('[data-ne-feed]');
-    if (neEid)  neEid .addEventListener('input', e => { this._newEnt.entity_id = e.target.value; });
-    if (neGrp)  neGrp .addEventListener('input', e => { this._newEnt.aio_group = e.target.value; });
-    if (neFeed) neFeed.addEventListener('input', e => { this._newEnt.aio_feed  = e.target.value; });
+    if (neEid)  neEid .addEventListener('input',  e => { this._newEnt.entity_id = e.target.value; });
+    if (neGrp)  neGrp .addEventListener('input',  e => { this._newEnt.aio_group = e.target.value; });
+    if (neFeed) neFeed.addEventListener('input',  e => { this._newEnt.aio_feed  = e.target.value; });
+    const neDir = $('[data-ne-dir]');
+    if (neDir)  neDir .addEventListener('change', e => { this._newEnt.direction  = e.target.value; });
 
     const neAdd = $('[data-ne-add]');
     if (neAdd) neAdd.addEventListener('click', () => {
       const eid   = $('[data-ne-eid]')?.value.trim()  || '';
       const group = $('[data-ne-grp]')?.value.trim()  || '';
       const feed  = $('[data-ne-feed]')?.value.trim() || '';
+      const dir   = $('[data-ne-dir]')?.value         || 'ha_to_aio';
       if (!eid || !group || !feed) { this._toast('Fill in all three fields', true); return; }
       if ((this._cfg.ha_to_aio||[]).some(i => i.entity_id===eid)) { this._toast('Already mapped', true); return; }
-      const newList = [...(this._cfg.ha_to_aio||[]), { entity_id:eid, aio_group:group, aio_feed:feed, enabled:true }];
-      this._newEnt = { entity_id:'', aio_group:'', aio_feed:'' };
+      const newList = [...(this._cfg.ha_to_aio||[]), { entity_id:eid, aio_group:group, aio_feed:feed, direction:dir, enabled:true }];
+      this._newEnt = { entity_id:'', aio_group:'', aio_feed:'', direction:'ha_to_aio' };
       this._save({ ...this._cfg, ha_to_aio: newList });
     });
 
@@ -924,10 +948,11 @@ class AdafruitIOSyncPanel extends HTMLElement {
       this._render();
     }));
 
-    const eeEid = $('[data-ee-eid]'), eeGrp = $('[data-ee-grp]'), eeFeed = $('[data-ee-feed]');
-    if (eeEid)  eeEid .addEventListener('input', e => { this._editEntForm.entity_id = e.target.value; });
-    if (eeGrp)  eeGrp .addEventListener('input', e => { this._editEntForm.aio_group  = e.target.value; });
-    if (eeFeed) eeFeed.addEventListener('input', e => { this._editEntForm.aio_feed   = e.target.value; });
+    const eeEid = $('[data-ee-eid]'), eeGrp = $('[data-ee-grp]'), eeFeed = $('[data-ee-feed]'), eeDir = $('[data-ee-dir]');
+    if (eeEid)  eeEid .addEventListener('input',  e => { this._editEntForm.entity_id = e.target.value; });
+    if (eeGrp)  eeGrp .addEventListener('input',  e => { this._editEntForm.aio_group  = e.target.value; });
+    if (eeFeed) eeFeed.addEventListener('input',  e => { this._editEntForm.aio_feed   = e.target.value; });
+    if (eeDir)  eeDir .addEventListener('change', e => { this._editEntForm.direction   = e.target.value; });
 
     const eeCancel = $('[data-ee-cancel]');
     if (eeCancel) eeCancel.addEventListener('click', () => { this._editEnt=null; this._render(); });
@@ -938,7 +963,8 @@ class AdafruitIOSyncPanel extends HTMLElement {
       const eid   = $('[data-ee-eid]')?.value.trim()  || orig.entity_id;
       const group = $('[data-ee-grp]')?.value.trim()  || orig.aio_group;
       const feed  = $('[data-ee-feed]')?.value.trim() || orig.aio_feed;
-      this._save({ ...this._cfg, ha_to_aio: this._cfg.ha_to_aio.map((it,i)=>i===idx?{...it,entity_id:eid,aio_group:group,aio_feed:feed}:it) });
+      const dir   = $('[data-ee-dir]')?.value         || orig.direction || 'ha_to_aio';
+      this._save({ ...this._cfg, ha_to_aio: this._cfg.ha_to_aio.map((it,i)=>i===idx?{...it,entity_id:eid,aio_group:group,aio_feed:feed,direction:dir}:it) });
     }));
 
     $$('[data-rm-ent]').forEach(btn => btn.addEventListener('click', () => {

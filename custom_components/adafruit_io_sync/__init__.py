@@ -35,7 +35,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         webcomponent_name="adafruit-io-sync-panel",
         sidebar_title="AIO Sync",
         sidebar_icon="mdi:cloud-sync",
-        module_url=f"{_STATIC_PATH}/panel.js?v=1.3.7",
+        module_url=f"{_STATIC_PATH}/panel.js?v=1.4.0",
         embed_iframe=False,
         require_admin=True,
     )
@@ -84,6 +84,10 @@ async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await hass.config_entries.async_reload(entry.entry_id)
 
 
+_ON_VALUES  = {"1", "on", "true", "yes"}
+_OFF_VALUES = {"0", "off", "false", "no"}
+
+
 async def _async_setup_ha_to_aio(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -91,21 +95,23 @@ async def _async_setup_ha_to_aio(
 ):
     """Register state listeners that push HA entity changes to Adafruit IO feeds."""
     ha_to_aio: list[dict] = entry.options.get(CONF_HA_TO_AIO, [])
-    if not ha_to_aio:
+    active = [item for item in ha_to_aio if item.get("enabled", True)]
+    if not active:
         return None
 
-    await _async_ensure_aio_feeds(entry, ha_to_aio)
+    await _async_ensure_aio_feeds(entry, active)
 
-    entity_map = {item["entity_id"]: item for item in ha_to_aio}
+    entity_map = {item["entity_id"]: item for item in active}
 
     # Push current state immediately so AIO has data right away
-    for item in ha_to_aio:
+    for item in active:
         state = hass.states.get(item["entity_id"])
         if state and state.state not in ("unknown", "unavailable"):
             await mqtt_client.async_publish(
                 item["aio_group"], item["aio_feed"], state.state
             )
 
+    # HA → AIO: listen for state changes
     async def _state_changed(event):
         entity_id = event.data["entity_id"]
         new_state = event.data.get("new_state")
@@ -122,7 +128,41 @@ async def _async_setup_ha_to_aio(
             config["aio_group"], config["aio_feed"], new_state.state,
         )
 
-    return async_track_state_change_event(hass, list(entity_map.keys()), _state_changed)
+    unsubscribe = async_track_state_change_event(hass, list(entity_map.keys()), _state_changed)
+
+    # AIO → HA: subscribe bidirectional items and apply commands back to HA
+    for item in active:
+        if item.get("direction") != "bidirectional":
+            continue
+        entity_id = item["entity_id"]
+        domain = entity_id.split(".")[0]
+
+        def _make_handler(eid: str, dom: str):
+            async def _handle_aio_command(value: str) -> None:
+                val = value.strip().lower()
+                if val in _ON_VALUES:
+                    await hass.services.async_call(
+                        "homeassistant", "turn_on", {"entity_id": eid}
+                    )
+                elif val in _OFF_VALUES:
+                    await hass.services.async_call(
+                        "homeassistant", "turn_off", {"entity_id": eid}
+                    )
+                else:
+                    try:
+                        await hass.services.async_call(
+                            dom, "set_value", {"entity_id": eid, "value": float(value)}
+                        )
+                    except Exception:
+                        _LOGGER.warning(
+                            "AIO→HA bidir: unhandled value '%s' for %s", value, eid
+                        )
+            return _handle_aio_command
+
+        mqtt_client.subscribe(item["aio_group"], item["aio_feed"], _make_handler(entity_id, domain))
+        _LOGGER.debug("AIO→HA bidir subscribed: %s.%s → %s", item["aio_group"], item["aio_feed"], entity_id)
+
+    return unsubscribe
 
 
 async def _async_ensure_aio_feeds(entry: ConfigEntry, ha_to_aio: list[dict]) -> None:
