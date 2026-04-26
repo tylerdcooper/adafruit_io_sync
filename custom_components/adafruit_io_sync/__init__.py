@@ -16,7 +16,7 @@ from .const import (
 )
 from .coordinator import AdafruitIOCoordinator
 from .mqtt_client import AdafruitIOMQTT
-from .panel_api import AIOSyncConfigView, AIOSyncGroupsView, PanelJSView
+from .panel_api import AIOSyncConfigView, AIOSyncGroupsView, IconsJSView, PanelJSView
 
 _LOGGER = logging.getLogger(__name__)
 _STATIC_PATH = "/adafruit_io_sync_panel"
@@ -257,8 +257,32 @@ DOMAIN_ATTR_MAP: dict[str, dict[str, dict]] = {
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Register the sidebar panel and REST API — runs once at startup."""
     hass.http.register_view(PanelJSView)
+    hass.http.register_view(IconsJSView)
     hass.http.register_view(AIOSyncConfigView)
     hass.http.register_view(AIOSyncGroupsView)
+
+    # Try to load the custom icon registration script globally so the sidebar
+    # shows the Adafruit IO logo. HA renamed this API across versions — try both.
+    icon_url = f"{_STATIC_PATH}/icons.js"
+    icon_registered = False
+    for fn_name in ("add_extra_module_url", "add_extra_html_url"):
+        try:
+            import importlib
+            frontend_mod = importlib.import_module("homeassistant.components.frontend")
+            fn = getattr(frontend_mod, fn_name, None)
+            if fn is None:
+                continue
+            if fn_name == "add_extra_html_url":
+                fn(hass, icon_url, False)
+            else:
+                fn(hass, icon_url)
+            icon_registered = True
+            _LOGGER.debug("Registered AIO custom icon via %s", fn_name)
+            break
+        except Exception:
+            continue
+
+    sidebar_icon = "adafruit-io:logo" if icon_registered else "mdi:infinity"
 
     from homeassistant.components import panel_custom
     await panel_custom.async_register_panel(
@@ -266,8 +290,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         frontend_url_path="adafruit_io_sync",
         webcomponent_name="adafruit-io-sync-panel",
         sidebar_title="AIO Sync",
-        sidebar_icon="mdi:infinity",
-        module_url=f"{_STATIC_PATH}/panel.js?v=1.6.2",
+        sidebar_icon=sidebar_icon,
+        module_url=f"{_STATIC_PATH}/panel.js?v=1.6.3",
         embed_iframe=False,
         require_admin=True,
     )

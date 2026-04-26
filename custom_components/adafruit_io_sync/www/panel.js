@@ -104,7 +104,7 @@ const CSS = `
   flex: 1;
   min-width: 160px;
 }
-.app-title .aio-logo { color: var(--acc); }
+.app-title .aio-logo { color: white; }
 .tabs {
   display: flex;
   gap: 3px;
