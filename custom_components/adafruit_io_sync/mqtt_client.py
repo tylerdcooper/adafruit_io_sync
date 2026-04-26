@@ -54,6 +54,9 @@ class AdafruitIOMQTT:
     async def async_publish(self, group_key: str, feed_key: str, value: str) -> None:
         topic = self._topic(group_key, feed_key)
         self._pending_publishes.add(topic)
+        # Safety net: auto-clear after 3 s in case the echo never arrives
+        # (e.g. subscribed after publish, or broker doesn't retain)
+        self._hass.loop.call_later(3, self._pending_publishes.discard, topic)
         await self._hass.async_add_executor_job(
             self._client.publish, topic, value
         )

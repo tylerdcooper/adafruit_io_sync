@@ -267,7 +267,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         webcomponent_name="adafruit-io-sync-panel",
         sidebar_title="AIO Sync",
         sidebar_icon="mdi:cloud-sync",
-        module_url=f"{_STATIC_PATH}/panel.js?v=1.5.1",
+        module_url=f"{_STATIC_PATH}/panel.js?v=1.5.2",
         embed_iframe=False,
         require_admin=True,
     )
@@ -331,7 +331,65 @@ async def _async_setup_ha_to_aio(
 
     entity_map = {item["entity_id"]: item for item in active}
 
-    # Push current state + attributes immediately so AIO has data right away
+    # Step 1 — subscribe bidirectional feeds BEFORE publishing anything so that
+    # echoes of the initial push arrive after subscriptions are active and are
+    # properly cleared from _pending_publishes.
+    for item in active:
+        if item.get("direction") != "bidirectional":
+            continue
+        entity_id = item["entity_id"]
+        domain    = entity_id.split(".")[0]
+
+        def _make_handler(eid: str, dom: str):
+            async def _handle_aio_command(value: str) -> None:
+                val = value.strip().lower()
+                if val in _ON_VALUES:
+                    await hass.services.async_call(
+                        "homeassistant", "turn_on", {"entity_id": eid}
+                    )
+                elif val in _OFF_VALUES:
+                    await hass.services.async_call(
+                        "homeassistant", "turn_off", {"entity_id": eid}
+                    )
+                else:
+                    try:
+                        await hass.services.async_call(
+                            dom, "set_value", {"entity_id": eid, "value": float(value)}
+                        )
+                    except Exception:
+                        _LOGGER.warning(
+                            "AIO→HA bidir: unhandled value '%s' for %s", value, eid
+                        )
+            return _handle_aio_command
+
+        mqtt_client.subscribe(item["aio_group"], item["aio_feed"], _make_handler(entity_id, domain))
+
+        def _make_attr_handler(eid: str, svc: tuple, param: str, decode):
+            async def _handle_attr(value: str) -> None:
+                try:
+                    svc_domain, svc_name = svc
+                    await hass.services.async_call(
+                        svc_domain, svc_name,
+                        {"entity_id": eid, param: decode(value)}
+                    )
+                except Exception as exc:
+                    _LOGGER.warning(
+                        "AIO→HA attr bidir: %s.%s error: %s", eid, param, exc
+                    )
+            return _handle_attr
+
+        for attr_key, ac in DOMAIN_ATTR_MAP.get(domain, {}).items():
+            if not ac["writable"]:
+                continue
+            attr_feed = f"{item['aio_feed']}-{ac['suffix']}"
+            mqtt_client.subscribe(
+                item["aio_group"], attr_feed,
+                _make_attr_handler(entity_id, ac["service"], ac["param"], ac["decode"])
+            )
+            _LOGGER.debug("AIO→HA attr bidir: %s.%s → %s", item["aio_group"], attr_feed, entity_id)
+
+    # Step 2 — push current state + attributes (echoes will be received and
+    # discarded cleanly since subscriptions are already active above).
     for item in active:
         eid   = item["entity_id"]
         state = hass.states.get(eid)
@@ -346,7 +404,7 @@ async def _async_setup_ha_to_aio(
                     item["aio_group"], f"{item['aio_feed']}-{ac['suffix']}", ac["encode"](val)
                 )
 
-    # HA → AIO: listen for state + attribute changes
+    # Step 3 — HA → AIO: listen for state + attribute changes
     async def _state_changed(event):
         entity_id = event.data["entity_id"]
         new_state = event.data.get("new_state")
@@ -383,65 +441,6 @@ async def _async_setup_ha_to_aio(
                 )
 
     unsubscribe = async_track_state_change_event(hass, list(entity_map.keys()), _state_changed)
-
-    # AIO → HA: subscribe bidirectional items — main feed + writable attribute feeds
-    for item in active:
-        if item.get("direction") != "bidirectional":
-            continue
-        entity_id = item["entity_id"]
-        domain    = entity_id.split(".")[0]
-
-        # Main on/off handler
-        def _make_handler(eid: str, dom: str):
-            async def _handle_aio_command(value: str) -> None:
-                val = value.strip().lower()
-                if val in _ON_VALUES:
-                    await hass.services.async_call(
-                        "homeassistant", "turn_on", {"entity_id": eid}
-                    )
-                elif val in _OFF_VALUES:
-                    await hass.services.async_call(
-                        "homeassistant", "turn_off", {"entity_id": eid}
-                    )
-                else:
-                    try:
-                        await hass.services.async_call(
-                            dom, "set_value", {"entity_id": eid, "value": float(value)}
-                        )
-                    except Exception:
-                        _LOGGER.warning(
-                            "AIO→HA bidir: unhandled value '%s' for %s", value, eid
-                        )
-            return _handle_aio_command
-
-        mqtt_client.subscribe(item["aio_group"], item["aio_feed"], _make_handler(entity_id, domain))
-
-        # Attribute feed handlers
-        def _make_attr_handler(eid: str, svc: tuple, param: str, decode):
-            async def _handle_attr(value: str) -> None:
-                try:
-                    svc_domain, svc_name = svc
-                    await hass.services.async_call(
-                        svc_domain, svc_name,
-                        {"entity_id": eid, param: decode(value)}
-                    )
-                except Exception as exc:
-                    _LOGGER.warning(
-                        "AIO→HA attr bidir: %s.%s error: %s", eid, param, exc
-                    )
-            return _handle_attr
-
-        for attr_key, ac in DOMAIN_ATTR_MAP.get(domain, {}).items():
-            if not ac["writable"]:
-                continue
-            attr_feed = f"{item['aio_feed']}-{ac['suffix']}"
-            mqtt_client.subscribe(
-                item["aio_group"], attr_feed,
-                _make_attr_handler(entity_id, ac["service"], ac["param"], ac["decode"])
-            )
-            _LOGGER.debug(
-                "AIO→HA attr bidir: %s.%s → %s", item["aio_group"], attr_feed, entity_id
-            )
 
     return unsubscribe
 
