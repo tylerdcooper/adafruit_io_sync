@@ -16,7 +16,7 @@ from .const import (
 )
 from .coordinator import AdafruitIOCoordinator
 from .mqtt_client import AdafruitIOMQTT
-from .panel_api import AIOSyncConfigView, AIOSyncGroupsView, IconsJSView, PanelJSView
+from .panel_api import AIOSyncConfigView, AIOSyncGroupsView, PanelJSView
 
 _LOGGER = logging.getLogger(__name__)
 _STATIC_PATH = "/adafruit_io_sync_panel"
@@ -257,14 +257,8 @@ DOMAIN_ATTR_MAP: dict[str, dict[str, dict]] = {
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Register the sidebar panel and REST API — runs once at startup."""
     hass.http.register_view(PanelJSView)
-    hass.http.register_view(IconsJSView)
     hass.http.register_view(AIOSyncConfigView)
     hass.http.register_view(AIOSyncGroupsView)
-
-    # Load icon registration script globally so the sidebar icon is available
-    # before the panel is opened (requires HA to load it on every page)
-    from homeassistant.components.frontend import add_extra_html_url
-    add_extra_html_url(hass, f"{_STATIC_PATH}/icons.js", False)
 
     from homeassistant.components import panel_custom
     await panel_custom.async_register_panel(
@@ -272,8 +266,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         frontend_url_path="adafruit_io_sync",
         webcomponent_name="adafruit-io-sync-panel",
         sidebar_title="AIO Sync",
-        sidebar_icon="adafruit-io:logo",
-        module_url=f"{_STATIC_PATH}/panel.js?v=1.6.1",
+        sidebar_icon="mdi:infinity",
+        module_url=f"{_STATIC_PATH}/panel.js?v=1.6.2",
         embed_iframe=False,
         require_admin=True,
     )
