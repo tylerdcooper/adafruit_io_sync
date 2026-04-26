@@ -267,7 +267,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         webcomponent_name="adafruit-io-sync-panel",
         sidebar_title="AIO Sync",
         sidebar_icon="mdi:cloud-sync",
-        module_url=f"{_STATIC_PATH}/panel.js?v=1.5.6",
+        module_url=f"{_STATIC_PATH}/panel.js?v=1.5.7",
         embed_iframe=False,
         require_admin=True,
     )
@@ -362,12 +362,12 @@ async def _async_setup_ha_to_aio(
                         )
             return _handle_aio_command
 
-        mqtt_client.subscribe(item["aio_group"], item["aio_feed"], _make_handler(entity_id, domain))
+        # Use subscribe_json: AIO dashboard publishes on {feed}/json without group prefix
+        mqtt_client.subscribe_json(item["aio_feed"], _make_handler(entity_id, domain))
+        _LOGGER.debug("AIO→HA bidir: subscribed json %s → %s", item["aio_feed"], entity_id)
 
         def _make_attr_handler(eid: str, svc: tuple, param: str, decode):
             async def _handle_attr(value: str) -> None:
-                _LOGGER.warning("AIO_DBG attr handler fired: %s value=%r svc=%s param=%s",
-                                eid, value, svc, param)
                 try:
                     svc_domain, svc_name = svc
                     decoded = decode(value)
@@ -375,21 +375,20 @@ async def _async_setup_ha_to_aio(
                         svc_domain, svc_name,
                         {"entity_id": eid, param: decoded}
                     )
-                    _LOGGER.warning("AIO_DBG attr call succeeded: %s.%s(%s=%s)", svc_domain, svc_name, param, decoded)
+                    _LOGGER.debug("AIO→HA attr: %s.%s(%s=%s) for %s", svc_domain, svc_name, param, decoded, eid)
                 except Exception as exc:
-                    _LOGGER.warning("AIO_DBG attr call FAILED: %s.%s error: %s", eid, param, exc)
+                    _LOGGER.warning("AIO→HA attr bidir error: %s.%s: %s", eid, param, exc)
             return _handle_attr
 
         for attr_key, ac in DOMAIN_ATTR_MAP.get(domain, {}).items():
             if not ac["writable"]:
                 continue
             attr_feed = f"{item['aio_feed']}-{ac['suffix']}"
-            full_topic = f"{item['aio_group']}.{attr_feed}"
-            mqtt_client.subscribe(
-                item["aio_group"], attr_feed,
+            mqtt_client.subscribe_json(
+                attr_feed,
                 _make_attr_handler(entity_id, ac["service"], ac["param"], ac["decode"])
             )
-            _LOGGER.warning("AIO_DBG subscribed: %s → %s(%s)", full_topic, ac["service"], ac["param"])
+            _LOGGER.debug("AIO→HA attr bidir: subscribed json %s → %s(%s)", attr_feed, ac["service"], ac["param"])
 
     # Step 2 — push current state + attributes (echoes will be received and
     # discarded cleanly since subscriptions are already active above).
