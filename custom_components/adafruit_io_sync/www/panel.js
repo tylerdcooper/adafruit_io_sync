@@ -473,8 +473,6 @@ class AdafruitIOSyncPanel extends HTMLElement {
     // HA entity browser state
     this._hExpanded   = new Set();
     this._hFilter     = '';
-    this._openEnt     = null;   // entity_id with inline add form open
-    this._entAddForm  = { aio_group: '', aio_feed: '', direction: 'ha_to_aio' };
     // Load state
     this._loading   = true;
     this._saving    = false;
@@ -513,7 +511,7 @@ class AdafruitIOSyncPanel extends HTMLElement {
     try {
       await this._hass.callApi('POST', 'adafruit_io_sync/config', options);
       this._cfg = options;
-      this._editFeed = null; this._editEnt = null; this._openEnt = null;
+      this._editFeed = null; this._editEnt = null;
       this._toast('Saved — reloading integration…');
     } catch (e) { this._toast(`Save failed: ${e?.message||e}`, true); }
     this._saving = false; this._render();
@@ -532,6 +530,14 @@ class AdafruitIOSyncPanel extends HTMLElement {
   // ── Helpers ───────────────────────────────────────────────────
   _feedName(gk, fk) { return this._groups[gk]?.feeds?.[fk]?.name || fk; }
   _groupName(gk)    { return this._groups[gk]?.name || gk; }
+  _defaultGroup()   {
+    // Prefer the AIO "My Feeds" group (key matches username or name is "My Feeds")
+    for (const [k, g] of Object.entries(this._groups)) {
+      if ((g.name||'').toLowerCase() === 'my feeds') return k;
+    }
+    const keys = Object.keys(this._groups);
+    return keys.length ? keys[0] : 'my-feeds';
+  }
 
   // ── Root render ───────────────────────────────────────────────
   _render() {
@@ -740,13 +746,11 @@ class AdafruitIOSyncPanel extends HTMLElement {
   }
 
   _tplHABrowser() {
-    const states   = this._hass?.states || {};
-    const allEnts  = Object.keys(states).sort();
-    const q        = this._hFilter.toLowerCase();
-    const mapped   = new Set((this._cfg.ha_to_aio||[]).map(i => i.entity_id));
-    const af       = this._entAddForm;
+    const states  = this._hass?.states || {};
+    const allEnts = Object.keys(states).sort();
+    const q       = this._hFilter.toLowerCase();
+    const mapped  = new Set((this._cfg.ha_to_aio||[]).map(i => i.entity_id));
 
-    // Group by domain
     const byDomain = {};
     for (const eid of allEnts) {
       if (q && !eid.includes(q) && !(states[eid]?.attributes?.friendly_name||'').toLowerCase().includes(q)) continue;
@@ -754,30 +758,21 @@ class AdafruitIOSyncPanel extends HTMLElement {
       (byDomain[dom] = byDomain[dom]||[]).push(eid);
     }
 
-    // Sort: common domains first
     const PRIORITY = ['fan','switch','light','climate','cover','lock','input_boolean','media_player','number','input_number','sensor','binary_sensor','input_text','text'];
     const domains  = Object.keys(byDomain).sort((a,b) => {
       const ai = PRIORITY.indexOf(a), bi = PRIORITY.indexOf(b);
-      if (ai >= 0 && bi >= 0) return ai - bi;
-      if (ai >= 0) return -1;
-      if (bi >= 0) return 1;
+      if (ai>=0 && bi>=0) return ai-bi;
+      if (ai>=0) return -1; if (bi>=0) return 1;
       return a.localeCompare(b);
     });
 
-    if (!domains.length) {
-      return `<div class="panel"><div class="empty">No entities found.<br>${q ? 'Try a different search.' : 'Check your HA connection.'}</div></div>`;
-    }
-
-    // Group picker for inline form
-    const gkeys    = Object.keys(this._groups);
-    const grpOpts  = `<option value="" disabled>Select group…</option>` +
-      gkeys.map(gk => `<option value="${esc(gk)}"${af.aio_group===gk?' selected':''}>${esc(this._groupName(gk))}</option>`).join('') +
-      `<option value="__new__"${af.aio_group==='__new__'?' selected':''}>＋ New group…</option>`;
+    if (!domains.length)
+      return `<div class="panel"><div class="empty">No entities found.<br>${q?'Try a different search.':'Check your HA connection.'}</div></div>`;
 
     let rows = '';
     for (const dom of domains) {
-      const ents = byDomain[dom];
-      const open = this._hExpanded.has(dom);
+      const ents    = byDomain[dom];
+      const open    = this._hExpanded.has(dom);
       const nMapped = ents.filter(e => mapped.has(e)).length;
       rows += `
         <div class="grp-row" data-hdom="${esc(dom)}">
@@ -790,51 +785,14 @@ class AdafruitIOSyncPanel extends HTMLElement {
         for (const eid of ents) {
           const fname   = states[eid]?.attributes?.friendly_name || '';
           const isAdded = mapped.has(eid);
-          const formOpen = this._openEnt === eid;
-          const autoFeed = eid.split('.')[1]?.replace(/_/g,'-') || '';
-
           rows += `
-            <div class="ha-ent-browser-item${isAdded?' is-added':''}" data-eid="${esc(eid)}" data-added="${isAdded}">
+            <div class="ha-ent-browser-item${isAdded?' is-added':''}">
               <span class="feed-dot${isAdded?' done':''}"></span>
               <span class="ent-name-b">
                 ${fname ? `<span class="fn">${esc(fname)}</span><span class="fk">${esc(eid)}</span>` : `<span class="fn">${esc(eid)}</span>`}
               </span>
               ${!isAdded ? `<button class="add-btn" data-ent-add="${esc(eid)}" title="Add to AIO sync">${IC.plus}</button>` : ''}
             </div>`;
-
-          if (formOpen && !isAdded) {
-            rows += `
-              <div class="ent-inline-form">
-                <div class="form-grid">
-                  <div class="form-field">
-                    <label>AIO Group</label>
-                    <select data-eaf-grp>
-                      ${grpOpts}
-                    </select>
-                  </div>
-                  ${af.aio_group === '__new__' ? `
-                  <div class="form-field">
-                    <label>New Group Name</label>
-                    <input type="text" placeholder="my-group" value="${esc(af.aio_group_new||'')}" data-eaf-grp-new>
-                  </div>` : ''}
-                  <div class="form-field">
-                    <label>AIO Feed</label>
-                    <input type="text" placeholder="${esc(autoFeed)}" value="${esc(af.aio_feed||autoFeed)}" data-eaf-feed>
-                  </div>
-                </div>
-                <div class="form-grid" style="grid-template-columns:1fr auto auto">
-                  <div class="form-field">
-                    <label>Direction</label>
-                    <select data-eaf-dir>
-                      <option value="ha_to_aio"${(af.direction||'ha_to_aio')==='ha_to_aio'?' selected':''}>HA → AIO only</option>
-                      <option value="bidirectional"${af.direction==='bidirectional'?' selected':''}>⇄ Bidirectional</option>
-                    </select>
-                  </div>
-                  <div style="display:flex;align-items:flex-end"><button class="btn btn-ghost btn-sm" data-eaf-cancel>Cancel</button></div>
-                  <div style="display:flex;align-items:flex-end"><button class="btn btn-primary btn-sm" data-eaf-confirm="${esc(eid)}">${IC.plus} Add</button></div>
-                </div>
-              </div>`;
-          }
         }
       }
     }
@@ -906,32 +864,28 @@ class AdafruitIOSyncPanel extends HTMLElement {
           if (editing) {
             const curDir = ef.direction !== undefined ? ef.direction : (item.direction || 'ha_to_aio');
             const gkeys2 = Object.keys(this._groups);
+            const curGrp = ef.aio_group !== undefined ? ef.aio_group : item.aio_group;
             body += `
-              <div class="ent-edit-form">
-                <div class="form-row">
-                  <div class="form-field">
-                    <label>AIO Group</label>
-                    <select data-ee-grp>
-                      ${gkeys2.map(g=>`<option value="${esc(g)}"${(ef.aio_group!==undefined?ef.aio_group:item.aio_group)===g?' selected':''}>${esc(this._groupName(g))}</option>`).join('')}
-                      <option value="__new__"${(ef.aio_group||item.aio_group)==='__new__'?' selected':''}>＋ New…</option>
-                    </select>
-                  </div>
-                  <div class="form-field">
-                    <label>AIO Feed</label>
-                    <input type="text" value="${esc(ef.aio_feed!==undefined?ef.aio_feed:item.aio_feed)}" data-ee-feed>
-                  </div>
-                  <div class="form-field">
-                    <label>Direction</label>
-                    <select data-ee-dir>
-                      <option value="ha_to_aio"${curDir==='ha_to_aio'?' selected':''}>HA → AIO</option>
-                      <option value="bidirectional"${curDir==='bidirectional'?' selected':''}>⇄ Bidirectional</option>
-                    </select>
-                  </div>
+              <div class="ent-edit-form" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+                <div class="form-field" style="flex:1;min-width:110px">
+                  <label>AIO Group</label>
+                  <select data-ee-grp>
+                    ${gkeys2.map(g=>`<option value="${esc(g)}"${curGrp===g?' selected':''}>${esc(this._groupName(g))}</option>`).join('')}
+                  </select>
                 </div>
-                <div style="display:flex;gap:8px;justify-content:flex-end">
-                  <button class="btn btn-ghost btn-sm" data-ee-cancel>Cancel</button>
-                  <button class="btn btn-primary btn-sm" data-ee-save="${idx}">Save</button>
+                <div class="form-field" style="flex:1;min-width:100px">
+                  <label>AIO Feed</label>
+                  <input type="text" value="${esc(ef.aio_feed!==undefined?ef.aio_feed:item.aio_feed)}" data-ee-feed>
                 </div>
+                <div class="form-field" style="flex:1;min-width:120px">
+                  <label>Direction</label>
+                  <select data-ee-dir>
+                    <option value="ha_to_aio"${curDir==='ha_to_aio'?' selected':''}>HA → AIO</option>
+                    <option value="bidirectional"${curDir==='bidirectional'?' selected':''}>⇄ Bidirectional</option>
+                  </select>
+                </div>
+                <button class="btn btn-ghost btn-sm" data-ee-cancel style="flex-shrink:0">Cancel</button>
+                <button class="btn btn-primary btn-sm" data-ee-save="${idx}" style="flex-shrink:0">Save</button>
               </div>`;
           }
         }
@@ -1062,7 +1016,6 @@ class AdafruitIOSyncPanel extends HTMLElement {
     }));
 
     // ── HA entity browser ────────────────────────────────────────
-    // Domain expand/collapse
     $$('[data-hdom]').forEach(el => el.addEventListener('click', e => {
       if (e.target.closest('[data-ent-add]')) return;
       const dom = el.dataset.hdom;
@@ -1070,7 +1023,6 @@ class AdafruitIOSyncPanel extends HTMLElement {
       this._render();
     }));
 
-    // Entity browser search
     const hs = $('[data-hsearch]');
     if (hs) hs.addEventListener('input', e => {
       this._hFilter = e.target.value;
@@ -1080,44 +1032,14 @@ class AdafruitIOSyncPanel extends HTMLElement {
       if (ns) { ns.focus(); ns.setSelectionRange(cur, cur); }
     });
 
-    // + on entity → open inline form
+    // + on entity → instantly add with smart defaults
     $$('[data-ent-add]').forEach(btn => btn.addEventListener('click', e => {
       e.stopPropagation();
-      const eid = btn.dataset.entAdd;
-      this._openEnt = this._openEnt === eid ? null : eid;
-      const autoFeed = eid.split('.')[1]?.replace(/_/g,'-') || '';
-      this._entAddForm = { aio_group: '', aio_feed: autoFeed, direction: 'ha_to_aio' };
-      this._render();
-    }));
-
-    // Inline form: group select — re-render on change
-    const eafGrp = $('[data-eaf-grp]');
-    if (eafGrp) eafGrp.addEventListener('change', e => {
-      this._entAddForm.aio_group = e.target.value;
-      this._render();
-    });
-    const eafGrpNew = $('[data-eaf-grp-new]');
-    if (eafGrpNew) eafGrpNew.addEventListener('input', e => { this._entAddForm.aio_group_new = e.target.value; });
-
-    const eafFeed = $('[data-eaf-feed]');
-    if (eafFeed) eafFeed.addEventListener('input', e => { this._entAddForm.aio_feed = e.target.value; });
-
-    const eafDir = $('[data-eaf-dir]');
-    if (eafDir) eafDir.addEventListener('change', e => { this._entAddForm.direction = e.target.value; });
-
-    const eafCancel = $('[data-eaf-cancel]');
-    if (eafCancel) eafCancel.addEventListener('click', () => { this._openEnt = null; this._render(); });
-
-    $$('[data-eaf-confirm]').forEach(btn => btn.addEventListener('click', () => {
-      const eid  = btn.dataset.eafConfirm;
-      let group  = $('[data-eaf-grp]')?.value || '';
-      if (group === '__new__') group = $('[data-eaf-grp-new]')?.value.trim() || '';
-      const feed = $('[data-eaf-feed]')?.value.trim() || '';
-      const dir  = $('[data-eaf-dir]')?.value || 'ha_to_aio';
-      if (!group || !feed) { this._toast('Set AIO group and feed name', true); return; }
-      if ((this._cfg.ha_to_aio||[]).some(i => i.entity_id===eid)) { this._toast('Already mapped', true); return; }
-      const newList = [...(this._cfg.ha_to_aio||[]), { entity_id:eid, aio_group:group, aio_feed:feed, direction:dir, enabled:true }];
-      this._openEnt = null;
+      const eid  = btn.dataset.entAdd;
+      if ((this._cfg.ha_to_aio||[]).some(i => i.entity_id===eid)) return;
+      const group = this._defaultGroup();
+      const feed  = 'ha-' + (eid.split('.')[1]?.replace(/_/g,'-') || eid.replace(/\./g,'-'));
+      const newList = [...(this._cfg.ha_to_aio||[]), { entity_id:eid, aio_group:group, aio_feed:feed, direction:'ha_to_aio', enabled:true }];
       this._save({ ...this._cfg, ha_to_aio: newList });
     }));
 
