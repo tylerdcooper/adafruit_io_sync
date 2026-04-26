@@ -825,8 +825,10 @@ class AdafruitIOSyncPanel extends HTMLElement {
       return a.localeCompare(b);
     });
 
+    const searchBar = `<div class="search-wrap"><input class="search-input" type="text" autocomplete="off" placeholder="Search entities…" value="${esc(this._hFilter)}" data-hsearch></div>`;
+
     if (!domains.length)
-      return `<div class="panel"><div class="empty">No entities found.<br>${q?'Try a different search.':'Check your HA connection.'}</div></div>`;
+      return `<div class="panel"><div class="panel-hdr">HA Entities</div>${searchBar}<div class="empty">No entities found.<br>${q?'Try a different search.':'Check your HA connection.'}</div></div>`;
 
     let rows = '';
     for (const dom of domains) {
@@ -859,9 +861,7 @@ class AdafruitIOSyncPanel extends HTMLElement {
     return `
       <div class="panel">
         <div class="panel-hdr">HA Entities</div>
-        <div class="search-wrap">
-          <input class="search-input" type="text" autocomplete="off" placeholder="Search entities…" value="${esc(this._hFilter)}" data-hsearch>
-        </div>
+        ${searchBar}
         ${rows}
       </div>`;
   }
