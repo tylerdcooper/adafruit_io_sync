@@ -97,10 +97,10 @@ class AdafruitIOMQTT:
         topic = msg.topic
         value = msg.payload.decode("utf-8")
 
-        _LOGGER.info("MQTT ← %s = %r  (pending=%s, registered=%s)",
-                     topic, value,
-                     topic in self._pending_publishes,
-                     topic in self._callbacks)
+        _LOGGER.warning("AIO_DBG MQTT ← %s = %r  (pending=%s, registered=%s)",
+                        topic, value,
+                        topic in self._pending_publishes,
+                        topic in self._callbacks)
 
         if topic in self._pending_publishes:
             self._pending_publishes.discard(topic)
@@ -108,7 +108,7 @@ class AdafruitIOMQTT:
 
         callback = self._callbacks.get(topic)
         if callback is None:
-            _LOGGER.warning("MQTT: no callback for topic %s — registered topics: %s",
+            _LOGGER.warning("AIO_DBG MQTT: no callback for topic %s — registered: %s",
                             topic, list(self._callbacks.keys()))
             return
 
