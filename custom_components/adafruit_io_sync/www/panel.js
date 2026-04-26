@@ -771,6 +771,18 @@ class AdafruitIOSyncPanel extends HTMLElement {
       });
     }
 
+    // Group picker — existing keys + option to type new
+    const gkeys = Object.keys(this._groups);
+    const grpOpts = gkeys.map(gk =>
+      `<option value="${esc(gk)}">${esc(this._groupName(gk))} (${esc(gk)})</option>`
+    ).join('');
+    const selectedGk  = ne.aio_group || '';
+    const grpInAIO    = selectedGk && selectedGk in this._groups;
+    const feedsInGrp  = grpInAIO ? Object.keys(this._groups[selectedGk].feeds || {}) : [];
+    const feedOpts    = feedsInGrp.map(fk =>
+      `<option value="${esc(fk)}">${esc(this._feedName(selectedGk, fk))} (${esc(fk)})</option>`
+    ).join('');
+
     return `
       <div class="add-panel">
         <div class="panel-hdr">Add Entity</div>
@@ -783,8 +795,35 @@ class AdafruitIOSyncPanel extends HTMLElement {
             </div>
           </div>
           <div class="form-row">
-            <div class="form-field"><label>AIO Group</label><input type="text" placeholder="home" value="${esc(ne.aio_group)}" data-ne-grp></div>
-            <div class="form-field"><label>AIO Feed</label><input type="text" placeholder="temperature" value="${esc(ne.aio_feed)}" data-ne-feed></div>
+            <div class="form-field">
+              <label>AIO Group</label>
+              <select data-ne-grp>
+                <option value="" disabled${!selectedGk?' selected':''}>Select a group…</option>
+                ${grpOpts}
+                <option value="__new__"${selectedGk==='__new__'?' selected':''}>＋ Create new group…</option>
+              </select>
+            </div>
+            ${selectedGk === '__new__' ? `
+            <div class="form-field">
+              <label>New Group Name</label>
+              <input type="text" placeholder="my-group" value="${esc(ne.aio_group_new||'')}" data-ne-grp-new>
+            </div>` : ''}
+            <div class="form-field">
+              <label>AIO Feed</label>
+              ${feedsInGrp.length ? `
+                <select data-ne-feed>
+                  <option value="" disabled${!ne.aio_feed?' selected':''}>Select a feed…</option>
+                  ${feedOpts}
+                  <option value="__new__"${ne.aio_feed==='__new__'?' selected':''}>＋ New feed name…</option>
+                </select>` : `
+                <input type="text" placeholder="feed-name" value="${esc(ne.aio_feed)}" data-ne-feed>`
+              }
+            </div>
+            ${ne.aio_feed === '__new__' ? `
+            <div class="form-field">
+              <label>New Feed Name</label>
+              <input type="text" placeholder="my-feed" value="${esc(ne.aio_feed_new||'')}" data-ne-feed-new>
+            </div>` : ''}
             <div class="form-field">
               <label>Direction</label>
               <select data-ne-dir>
@@ -794,6 +833,9 @@ class AdafruitIOSyncPanel extends HTMLElement {
             </div>
             <div style="display:flex;align-items:flex-end"><button class="btn btn-primary" data-ne-add>${IC.plus} Add</button></div>
           </div>
+          ${selectedGk && selectedGk !== '__new__' && !grpInAIO
+            ? `<div class="warn-banner" style="margin-top:8px;border-radius:6px">Group "<strong>${esc(selectedGk)}</strong>" doesn't exist in AIO yet — it will be created automatically when you save.</div>`
+            : ''}
         </div>
       </div>
       <p class="section-lbl">Syncing ${list.length} entit${list.length===1?'y':'ies'} to Adafruit IO</p>
@@ -916,20 +958,46 @@ class AdafruitIOSyncPanel extends HTMLElement {
     }));
 
     // ── HA→AIO ──────────────────────────────────────────────────
-    const neEid = $('[data-ne-eid]'), neGrp = $('[data-ne-grp]'), neFeed = $('[data-ne-feed]');
-    if (neEid)  neEid .addEventListener('input',  e => { this._newEnt.entity_id = e.target.value; });
-    if (neGrp)  neGrp .addEventListener('input',  e => { this._newEnt.aio_group = e.target.value; });
-    if (neFeed) neFeed.addEventListener('input',  e => { this._newEnt.aio_feed  = e.target.value; });
+    const neEid = $('[data-ne-eid]');
+    if (neEid) neEid.addEventListener('input', e => { this._newEnt.entity_id = e.target.value; });
+
+    // Group select — re-render on change so feed list updates
+    const neGrp = $('[data-ne-grp]');
+    if (neGrp) neGrp.addEventListener('change', e => {
+      this._newEnt.aio_group = e.target.value;
+      this._newEnt.aio_feed  = '';
+      this._newEnt.aio_feed_new = '';
+      this._render();
+    });
+    const neGrpNew = $('[data-ne-grp-new]');
+    if (neGrpNew) neGrpNew.addEventListener('input', e => { this._newEnt.aio_group_new = e.target.value; });
+
+    // Feed select — re-render when "new feed" is chosen
+    const neFeed = $('[data-ne-feed]');
+    if (neFeed) {
+      const evt = neFeed.tagName === 'SELECT' ? 'change' : 'input';
+      neFeed.addEventListener(evt, e => {
+        this._newEnt.aio_feed = e.target.value;
+        if (e.target.value === '__new__') this._render();
+      });
+    }
+    const neFeedNew = $('[data-ne-feed-new]');
+    if (neFeedNew) neFeedNew.addEventListener('input', e => { this._newEnt.aio_feed_new = e.target.value; });
+
     const neDir = $('[data-ne-dir]');
-    if (neDir)  neDir .addEventListener('change', e => { this._newEnt.direction  = e.target.value; });
+    if (neDir) neDir.addEventListener('change', e => { this._newEnt.direction = e.target.value; });
 
     const neAdd = $('[data-ne-add]');
     if (neAdd) neAdd.addEventListener('click', () => {
-      const eid   = $('[data-ne-eid]')?.value.trim()  || '';
-      const group = $('[data-ne-grp]')?.value.trim()  || '';
-      const feed  = $('[data-ne-feed]')?.value.trim() || '';
-      const dir   = $('[data-ne-dir]')?.value         || 'ha_to_aio';
-      if (!eid || !group || !feed) { this._toast('Fill in all three fields', true); return; }
+      const eid = $('[data-ne-eid]')?.value.trim() || '';
+      // Resolve group: existing key, new name, or typed
+      let group = this._newEnt.aio_group || '';
+      if (group === '__new__') group = ($('[data-ne-grp-new]')?.value.trim() || '');
+      // Resolve feed: existing key, new name
+      let feed = this._newEnt.aio_feed || '';
+      if (feed === '__new__') feed = ($('[data-ne-feed-new]')?.value.trim() || '');
+      const dir = $('[data-ne-dir]')?.value || 'ha_to_aio';
+      if (!eid || !group || !feed) { this._toast('Fill in all fields', true); return; }
       if ((this._cfg.ha_to_aio||[]).some(i => i.entity_id===eid)) { this._toast('Already mapped', true); return; }
       const newList = [...(this._cfg.ha_to_aio||[]), { entity_id:eid, aio_group:group, aio_feed:feed, direction:dir, enabled:true }];
       this._newEnt = { entity_id:'', aio_group:'', aio_feed:'', direction:'ha_to_aio' };

@@ -1,4 +1,5 @@
 import logging
+import re
 
 import aiohttp
 from homeassistant.config_entries import ConfigEntry
@@ -35,7 +36,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         webcomponent_name="adafruit-io-sync-panel",
         sidebar_title="AIO Sync",
         sidebar_icon="mdi:cloud-sync",
-        module_url=f"{_STATIC_PATH}/panel.js?v=1.4.0",
+        module_url=f"{_STATIC_PATH}/panel.js?v=1.4.1",
         embed_iframe=False,
         require_admin=True,
     )
@@ -165,6 +166,14 @@ async def _async_setup_ha_to_aio(
     return unsubscribe
 
 
+def _aio_key(name: str) -> str:
+    """Convert a human name to a valid AIO key (lowercase, hyphens only)."""
+    key = name.lower().strip()
+    key = re.sub(r"[^a-z0-9-]", "-", key)
+    key = re.sub(r"-+", "-", key).strip("-")
+    return key
+
+
 async def _async_ensure_aio_feeds(entry: ConfigEntry, ha_to_aio: list[dict]) -> None:
     """Create any AIO groups or feeds that don't exist yet."""
     username = entry.data[CONF_AIO_USERNAME]
@@ -177,18 +186,18 @@ async def _async_ensure_aio_feeds(entry: ConfigEntry, ha_to_aio: list[dict]) -> 
         ) as resp:
             existing_groups: set[str] = {g["key"] for g in await resp.json()} if resp.ok else set()
 
-        for group_key in {item["aio_group"] for item in ha_to_aio}:
+        for group_key in {_aio_key(item["aio_group"]) for item in ha_to_aio}:
             if group_key not in existing_groups:
-                await session.post(
+                resp = await session.post(
                     f"{AIO_BASE_URL}/{username}/groups",
                     headers=headers,
                     json={"name": group_key},
                 )
-                _LOGGER.info("Created AIO group '%s'", group_key)
+                _LOGGER.info("Created AIO group '%s' (status %s)", group_key, resp.status)
 
         for item in ha_to_aio:
-            group_key = item["aio_group"]
-            feed_key  = item["aio_feed"]
+            group_key = _aio_key(item["aio_group"])
+            feed_key  = _aio_key(item["aio_feed"])
             async with session.get(
                 f"{AIO_BASE_URL}/{username}/feeds/{group_key}.{feed_key}",
                 headers=headers,
