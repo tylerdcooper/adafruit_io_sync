@@ -19,7 +19,10 @@ class PanelJSView(HomeAssistantView):
     requires_auth = False
 
     async def get(self, request):
-        content = (_WWW / "panel.js").read_text(encoding="utf-8")
+        hass = request.app["hass"]
+        content = await hass.async_add_executor_job(
+            (_WWW / "panel.js").read_bytes
+        )
         return Response(
             body=content,
             content_type="application/javascript",
