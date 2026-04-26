@@ -427,7 +427,7 @@ const CSS = `
 .ent-id-r { font-size: 11px; color: var(--tx2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ent-dest { font-size: 12px; color: var(--tx2); margin-top: 2px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 .ent-actions { display: flex; gap: 2px; flex-shrink: 0; }
-.ent-edit-form { background: var(--surf2); border-bottom: 1px solid var(--bdr); padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+.ent-edit-form { background: var(--surf2); border-bottom: 1px solid var(--bdr); padding: 10px 14px; display: flex; flex-direction: row; align-items: flex-end; gap: 8px; flex-wrap: wrap; }
 
 /* Configured entity device sections */
 .ent-device-group { border-top: 1px solid var(--bdr); }
@@ -866,7 +866,7 @@ class AdafruitIOSyncPanel extends HTMLElement {
             const gkeys2 = Object.keys(this._groups);
             const curGrp = ef.aio_group !== undefined ? ef.aio_group : item.aio_group;
             body += `
-              <div class="ent-edit-form" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+              <div class="ent-edit-form">
                 <div class="form-field" style="flex:1;min-width:110px">
                   <label>AIO Group</label>
                   <select data-ee-grp>
