@@ -30,6 +30,25 @@ class PanelJSView(HomeAssistantView):
         )
 
 
+class IconsJSView(HomeAssistantView):
+    """Serves the custom icon registration script — loaded globally via add_extra_html_url."""
+
+    url = "/adafruit_io_sync_panel/icons.js"
+    name = "adafruit_io_sync:icons_js"
+    requires_auth = False
+
+    async def get(self, request):
+        hass = request.app["hass"]
+        content = await hass.async_add_executor_job(
+            (_WWW / "icons.js").read_bytes
+        )
+        return Response(
+            body=content,
+            content_type="application/javascript",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+
+
 class AIOSyncConfigView(HomeAssistantView):
     """GET returns current options; POST saves new options and reloads the entry."""
 
