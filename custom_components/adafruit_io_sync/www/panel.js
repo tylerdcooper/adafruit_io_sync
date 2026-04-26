@@ -194,7 +194,6 @@ const CSS = `
   transition: all .15s;
 }
 .add-btn:hover { color: var(--acc); border-color: var(--acc); background: rgba(3,169,244,.08); }
-.add-btn.all { width: auto; padding: 0 8px; font-size: 11px; font-weight: 600; gap: 3px; }
 
 /* Empty / loading */
 .empty {
@@ -558,7 +557,7 @@ class AdafruitIOSyncPanel extends HTMLElement {
           <span class="grp-name">${esc(grp.name||gk)}</span>
           <span class="grp-count">${countTxt}</span>
           ${nUnadded > 0
-            ? `<button class="add-btn all" data-gadd="${esc(gk)}" title="Add all ${nUnadded} feeds">${IC.plus} All</button>`
+            ? `<button class="add-btn" data-gadd="${esc(gk)}" title="Add all ${nUnadded} feeds">${IC.plus}</button>`
             : ''}
         </div>`;
 
