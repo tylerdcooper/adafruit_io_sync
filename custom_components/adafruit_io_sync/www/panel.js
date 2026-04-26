@@ -348,9 +348,30 @@ const CSS = `
   transition: border-color .15s;
   width: 100%;
 }
+.form-field select { padding-right: 28px; }
 .form-field input:focus,
 .form-field select:focus { border-color: var(--acc); }
 .form-field select option { background: var(--surf); }
+
+/* ── New Group Modal ────────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.55);
+  z-index: 200;
+  display: flex; align-items: center; justify-content: center;
+}
+.modal-card {
+  background: var(--surf);
+  border: 1px solid var(--bdr);
+  border-radius: var(--rad);
+  padding: 20px;
+  width: 300px;
+  max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+  display: flex; flex-direction: column; gap: 14px;
+}
+.modal-title { font-size: 14px; font-weight: 600; }
+.modal-hint  { font-size: 11px; color: var(--tx2); margin-top: -8px; }
 
 /* Badges */
 .badge {
@@ -520,6 +541,10 @@ class AdafruitIOSyncPanel extends HTMLElement {
     // Edit state (right panel — HA→AIO)
     this._editEnt     = null;
     this._editEntForm = {};
+    // New group modal state
+    this._customGroups = new Set();   // groups added locally this session
+    this._showGrpModal = false;
+    this._newGrpInput  = '';
     // HA entity browser state
     this._hExpanded   = new Set();
     this._hFilter     = '';
@@ -581,12 +606,20 @@ class AdafruitIOSyncPanel extends HTMLElement {
   _feedName(gk, fk) { return this._groups[gk]?.feeds?.[fk]?.name || fk; }
   _groupName(gk)    { return this._groups[gk]?.name || gk; }
   _defaultGroup()   {
-    // Prefer the AIO "My Feeds" group (key matches username or name is "My Feeds")
     for (const [k, g] of Object.entries(this._groups)) {
       if ((g.name||'').toLowerCase() === 'my feeds') return k;
     }
     const keys = Object.keys(this._groups);
     return keys.length ? keys[0] : 'my-feeds';
+  }
+
+  _aioKey(s) {
+    return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  }
+
+  _allGroupKeys() {
+    // Existing AIO groups + any created this session
+    return [...Object.keys(this._groups), ...this._customGroups];
   }
 
   // ── Root render ───────────────────────────────────────────────
@@ -615,7 +648,22 @@ class AdafruitIOSyncPanel extends HTMLElement {
             : this._tab==='aio_to_ha' ? this._tplAIOtoHA() : this._tplHAtoAIO()}
         </div>
       </div>
-      <div class="toast"></div>`;
+      <div class="toast"></div>
+      ${this._showGrpModal ? `
+      <div class="modal-overlay" data-modal-bg>
+        <div class="modal-card">
+          <div class="modal-title">Create New AIO Group</div>
+          <p class="modal-hint">Group name will be normalized to lowercase with hyphens.<br>The group is created in AIO when you save the entity.</p>
+          <div class="form-field">
+            <label>Group Name</label>
+            <input type="text" data-new-grp-input placeholder="my-new-group" value="${esc(this._newGrpInput)}" autofocus>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button class="btn btn-ghost btn-sm" data-grp-modal-cancel>Cancel</button>
+            <button class="btn btn-primary btn-sm" data-grp-modal-save>${IC.plus} Create Group</button>
+          </div>
+        </div>
+      </div>` : ''}`;
     this._bind();
   }
 
@@ -950,15 +998,18 @@ class AdafruitIOSyncPanel extends HTMLElement {
 
           if (editing) {
             const curDir = ef.direction !== undefined ? ef.direction : (item.direction || 'ha_to_aio');
-            const gkeys2 = Object.keys(this._groups);
+            const gkeys2 = this._allGroupKeys();
             const curGrp = ef.aio_group !== undefined ? ef.aio_group : item.aio_group;
             body += `
               <div class="ent-edit-form">
                 <div class="form-field" style="flex:1;min-width:110px">
                   <label>AIO Group</label>
-                  <select data-ee-grp>
-                    ${gkeys2.map(g=>`<option value="${esc(g)}"${curGrp===g?' selected':''}>${esc(this._groupName(g))}</option>`).join('')}
-                  </select>
+                  <div style="display:flex;gap:5px;align-items:center">
+                    <select data-ee-grp style="flex:1">
+                      ${gkeys2.map(g=>`<option value="${esc(g)}"${curGrp===g?' selected':''}>${esc(this._groupName(g))}</option>`).join('')}
+                    </select>
+                    <button class="add-btn" data-open-grp-modal title="Create new group">${IC.plus}</button>
+                  </div>
                 </div>
                 <div class="form-field" style="flex:1;min-width:100px">
                   <label>AIO Feed</label>
@@ -1144,6 +1195,50 @@ class AdafruitIOSyncPanel extends HTMLElement {
       this._editEntForm = {};
       this._render();
     }));
+
+    // Open new-group modal
+    $$('[data-open-grp-modal]').forEach(btn => btn.addEventListener('click', e => {
+      e.stopPropagation();
+      this._newGrpInput = '';
+      this._showGrpModal = true;
+      this._render();
+      // Auto-focus the input after render
+      setTimeout(() => this.shadowRoot.querySelector('[data-new-grp-input]')?.focus(), 50);
+    }));
+
+    // Modal: close on backdrop click
+    const modalBg = $('[data-modal-bg]');
+    if (modalBg) modalBg.addEventListener('click', e => {
+      if (e.target === modalBg) { this._showGrpModal = false; this._render(); }
+    });
+
+    // Modal: live input
+    const newGrpInput = $('[data-new-grp-input]');
+    if (newGrpInput) {
+      newGrpInput.addEventListener('input', e => { this._newGrpInput = e.target.value; });
+      newGrpInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter') this.shadowRoot.querySelector('[data-grp-modal-save]')?.click();
+        if (e.key === 'Escape') { this._showGrpModal = false; this._render(); }
+      });
+    }
+
+    // Modal: Cancel
+    const grpCancel = $('[data-grp-modal-cancel]');
+    if (grpCancel) grpCancel.addEventListener('click', () => { this._showGrpModal = false; this._render(); });
+
+    // Modal: Save — normalize key, add to custom groups, select it
+    const grpSave = $('[data-grp-modal-save]');
+    if (grpSave) grpSave.addEventListener('click', () => {
+      const raw = this._newGrpInput.trim();
+      if (!raw) { this._showToast('Enter a group name', true); return; }
+      const key = this._aioKey(raw);
+      if (!key) { this._showToast('Invalid group name', true); return; }
+      this._customGroups.add(key);
+      this._editEntForm.aio_group = key;
+      this._showGrpModal = false;
+      this._render();
+      this._showToast(`Group "${key}" added — will be created in AIO on save`);
+    });
 
     const eeGrp = $('[data-ee-grp]'), eeFeed = $('[data-ee-feed]'), eeDir = $('[data-ee-dir]');
     if (eeGrp)  eeGrp .addEventListener('change', e => { this._editEntForm.aio_group = e.target.value; });
