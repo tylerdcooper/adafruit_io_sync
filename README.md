@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/aio_logo.svg" height="80" alt="Adafruit IO Logo"> &nbsp;&nbsp;↔&nbsp;&nbsp; <img src="docs/ha_logo.svg" height="80" alt="Home Assistant Logo">
+<img src="docs/aio_sync_logo.svg" height="60" alt="Adafruit IO Sync — AIO ↔ Home Assistant">
 
 # Adafruit IO Sync
 
