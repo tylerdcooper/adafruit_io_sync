@@ -1,41 +1,51 @@
-// Adafruit IO Sync Panel — v1.3.0
+// Adafruit IO Sync Panel — v1.3.6
 
-const ESC_MAP = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' };
-const esc  = v => String(v ?? '').replace(/[&<>"']/g, c => ESC_MAP[c]);
+const _ESC = { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' };
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => _ESC[c]);
 
 const TYPE_META = {
-  sensor: { label: 'Sensor',  cls: 'type-sensor' },
-  switch: { label: 'Switch',  cls: 'type-switch' },
-  number: { label: 'Number',  cls: 'type-number' },
-  text:   { label: 'Text',    cls: 'type-text'   },
+  sensor: { label:'Sensor', cls:'type-sensor' },
+  switch: { label:'Switch', cls:'type-switch' },
+  number: { label:'Number', cls:'type-number' },
+  text:   { label:'Text',   cls:'type-text'   },
 };
 const DIR_META = {
-  aio_to_ha:     { label: 'AIO → HA',       cls: 'dir-oneway' },
-  bidirectional: { label: '⇄ Bidirectional', cls: 'dir-bidir'  },
+  aio_to_ha:     { label:'AIO → HA',        cls:'dir-oneway' },
+  bidirectional: { label:'⇄ Bidirectional',  cls:'dir-bidir'  },
 };
 
-const STYLES = `
+// ─── Icons ────────────────────────────────────────────────────
+const IC = {
+  cloud: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`,
+  plus:  `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>`,
+  edit:  `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5Z"/></svg>`,
+  trash: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`,
+  chev:  `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>`,
+  arrow: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>`,
+  device:`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>`,
+};
+
+// ─── Styles ───────────────────────────────────────────────────
+const CSS = `
 :host {
-  --acc:   var(--primary-color, #03a9f4);
-  --surf:  var(--card-background-color, #1c1c1e);
-  --surf2: var(--secondary-background-color, #2c2c2e);
-  --bg:    var(--primary-background-color, #111112);
-  --bdr:   var(--divider-color, rgba(255,255,255,0.10));
-  --tx1:   var(--primary-text-color, #e5e5e7);
-  --tx2:   var(--secondary-text-color, #8e8e93);
-  --rad:   12px;
-  --rad-s: 8px;
-  --shd:   0 2px 8px rgba(0,0,0,0.35);
+  --acc:    var(--primary-color, #03a9f4);
+  --surf:   var(--card-background-color, #1c1c1e);
+  --surf2:  var(--secondary-background-color, #2a2a2c);
+  --bg:     var(--primary-background-color, #111112);
+  --bdr:    var(--divider-color, rgba(255,255,255,0.09));
+  --tx1:    var(--primary-text-color, #e5e5e7);
+  --tx2:    var(--secondary-text-color, #8e8e93);
+  --rad:    12px;
+  --rad-s:  7px;
   display: block;
   font-family: var(--paper-font-body1_-_font-family, -apple-system, 'Segoe UI', Roboto, sans-serif);
+  font-size: 14px;
   color: var(--tx1);
   background: var(--bg);
   min-height: 100vh;
-  font-size: 14px;
-  line-height: 1.5;
 }
 
-/* ── Header ─────────────────────────────────────────── */
+/* Header */
 .app-header {
   display: flex;
   align-items: center;
@@ -49,14 +59,11 @@ const STYLES = `
   gap: 10px;
   font-size: 18px;
   font-weight: 600;
-  letter-spacing: -0.3px;
-  color: var(--tx1);
+  letter-spacing: -.3px;
   flex: 1;
   min-width: 160px;
 }
-.app-title svg { color: var(--acc); flex-shrink: 0; }
-
-/* ── Tabs ────────────────────────────────────────────── */
+.app-title svg { color: var(--acc); }
 .tabs {
   display: flex;
   gap: 3px;
@@ -73,49 +80,41 @@ const STYLES = `
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
-  transition: all 0.15s ease;
+  transition: all .15s;
   white-space: nowrap;
 }
-.tab-btn.active {
-  background: var(--surf);
-  color: var(--tx1);
-  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
-}
+.tab-btn.active { background: var(--surf); color: var(--tx1); box-shadow: 0 1px 4px rgba(0,0,0,.3); }
 .tab-btn:not(.active):hover { color: var(--tx1); }
 
-/* ── Layout ─────────────────────────────────────────── */
+/* Layout */
 .app-body { padding: 20px 24px 40px; }
-.split-layout {
-  display: grid;
-  grid-template-columns: 300px 1fr;
-  gap: 20px;
-  align-items: start;
-}
-@media (max-width: 720px) {
-  .split-layout { grid-template-columns: 1fr; }
+.split { display: grid; grid-template-columns: 280px 1fr; gap: 20px; align-items: start; }
+@media (max-width: 700px) {
+  .split { grid-template-columns: 1fr; }
   .app-header, .app-body { padding-left: 16px; padding-right: 16px; }
 }
 
-/* ── Panels ─────────────────────────────────────────── */
+/* Panel shell */
 .panel {
   background: var(--surf);
   border-radius: var(--rad);
   border: 1px solid var(--bdr);
   overflow: hidden;
 }
-.panel-header {
+.panel-hdr {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 14px 16px;
+  gap: 8px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--bdr);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.6px;
+  letter-spacing: .7px;
   color: var(--tx2);
 }
-.count {
+.panel-hdr .spacer { flex: 1; }
+.count-badge {
   background: var(--surf2);
   color: var(--tx2);
   border-radius: 20px;
@@ -124,187 +123,168 @@ const STYLES = `
   font-weight: 600;
 }
 
-/* ── Search ─────────────────────────────────────────── */
-.search-wrap {
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--bdr);
-}
+/* Search */
+.search-wrap { padding: 9px 11px; border-bottom: 1px solid var(--bdr); }
 .search-input {
   width: 100%;
   background: var(--surf2);
   border: 1px solid var(--bdr);
   border-radius: var(--rad-s);
   color: var(--tx1);
-  padding: 7px 10px 7px 32px;
+  padding: 7px 10px 7px 30px;
   font-size: 13px;
   box-sizing: border-box;
   outline: none;
-  transition: border-color 0.15s;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238e8e93' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E");
+  transition: border-color .15s;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='%238e8e93' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: 10px center;
 }
 .search-input:focus { border-color: var(--acc); }
 .search-input::placeholder { color: var(--tx2); }
 
-/* ── Browser ─────────────────────────────────────────── */
-.browser-empty {
-  padding: 32px 16px;
-  text-align: center;
-  color: var(--tx2);
-  font-size: 13px;
-  line-height: 1.8;
-}
-.group-header {
+/* Browser — group row */
+.grp-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding: 9px 10px 9px 14px;
   cursor: pointer;
   user-select: none;
-  transition: background 0.1s;
   border-top: 1px solid var(--bdr);
+  transition: background .1s;
 }
-.group-header:first-child { border-top: none; }
-.group-header:hover { background: var(--surf2); }
-.group-chevron {
-  color: var(--tx2);
-  transition: transform 0.2s;
-  flex-shrink: 0;
+.grp-row:first-child { border-top: none; }
+.grp-row:hover { background: var(--surf2); }
+.grp-chev { color: var(--tx2); display: flex; align-items: center; transition: transform .2s; flex-shrink: 0; }
+.grp-chev.open { transform: rotate(90deg); }
+.grp-name { font-weight: 600; font-size: 13px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grp-count { font-size: 11px; color: var(--tx2); flex-shrink: 0; }
+
+/* Browser — feed row */
+.feed-row-b {
   display: flex;
   align-items: center;
+  gap: 8px;
+  padding: 7px 10px 7px 28px;
+  border-top: 1px solid var(--bdr);
+  transition: background .1s;
 }
-.group-chevron.open { transform: rotate(90deg); }
-.group-name { font-weight: 600; font-size: 13px; flex: 1; }
-.group-badge {
-  background: var(--surf2);
-  color: var(--tx2);
-  border-radius: 10px;
-  padding: 1px 7px;
-  font-size: 11px;
-}
-.group-add-btn {
+.feed-row-b:hover { background: rgba(3,169,244,.05); }
+.feed-row-b.is-added { opacity: .45; pointer-events: none; }
+.feed-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--acc); flex-shrink: 0; }
+.feed-dot.done { background: #4caf50; }
+.feed-name-b { flex: 1; font-size: 13px; min-width: 0; }
+.feed-name-b .fn { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.feed-name-b .fk { display: block; font-size: 10px; color: var(--tx2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Add icon buttons */
+.add-btn {
   background: transparent;
-  border: 1px solid var(--bdr);
+  border: 1px solid transparent;
   border-radius: 6px;
   color: var(--tx2);
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 3px 8px;
-  transition: all 0.15s;
-  white-space: nowrap;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
   flex-shrink: 0;
+  transition: all .15s;
 }
-.group-add-btn:hover { color: var(--acc); border-color: var(--acc); background: rgba(3,169,244,0.07); }
+.add-btn:hover { color: var(--acc); border-color: var(--acc); background: rgba(3,169,244,.08); }
+.add-btn.all { width: auto; padding: 0 8px; font-size: 11px; font-weight: 600; gap: 3px; }
 
-.feed-browser-item {
+/* Empty / loading */
+.empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--tx2);
+  font-size: 13px;
+  line-height: 1.9;
+}
+.empty strong { display: block; font-size: 15px; color: var(--tx1); margin-bottom: 6px; }
+.loading-state {
+  padding: 80px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  color: var(--tx2);
+  font-size: 14px;
+}
+.spinner {
+  width: 26px; height: 26px;
+  border: 3px solid rgba(255,255,255,.12);
+  border-top-color: var(--acc);
+  border-radius: 50%;
+  animation: spin .6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Right panel: device groups ─────────────────────── */
+.device-group { border-top: 1px solid var(--bdr); }
+.device-group:first-child { border-top: none; }
+
+.device-hdr {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 14px 8px 32px;
-  cursor: pointer;
-  transition: background 0.1s;
-  font-size: 13px;
-  border-top: 1px solid var(--bdr);
-}
-.feed-browser-item:hover:not(.added) { background: rgba(3,169,244,0.07); }
-.feed-browser-item.added { cursor: default; color: var(--tx2); }
-.feed-dot {
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: var(--acc);
-  flex-shrink: 0;
-}
-.feed-dot.added-dot { background: #4caf50; }
-.feed-label { flex: 1; }
-.feed-key-hint { font-size: 11px; color: var(--tx2); margin-left: 5px; }
-.feed-added-chip {
-  font-size: 10px;
-  font-weight: 600;
-  color: #4caf50;
-  background: rgba(76,175,80,0.12);
-  border-radius: 8px;
-  padding: 1px 7px;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-}
-
-/* ── Inline Add Form ─────────────────────────────────── */
-/* ── Inline add form (under a browser feed item) ─────── */
-.inline-form {
-  background: rgba(3,169,244,0.05);
-  border-top: 2px solid var(--acc);
+  padding: 10px 16px 8px;
+  background: rgba(255,255,255,.025);
   border-bottom: 1px solid var(--bdr);
-  padding: 12px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
 }
-.inline-form .form-grid {
+.device-hdr svg { color: var(--tx2); flex-shrink: 0; }
+.device-hdr-name { font-weight: 700; font-size: 12px; letter-spacing: .2px; flex: 1; }
+.device-hdr-count { font-size: 11px; color: var(--tx2); }
+.device-hdr-rm {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--tx2);
+  padding: 3px 5px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  transition: all .15s;
+}
+.device-hdr-rm:hover { color: #ef5350; background: rgba(239,83,80,.1); }
+
+.feed-row-r {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 10px 20px;
+  border-bottom: 1px solid var(--bdr);
+  transition: background .1s;
+}
+.feed-row-r:last-child { border-bottom: none; }
+.feed-row-r:hover { background: rgba(255,255,255,.02); }
+.feed-row-r.disabled { opacity: .45; }
+.feed-info-r { flex: 1; min-width: 0; }
+.feed-name-r { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.feed-meta-r { display: flex; gap: 5px; margin-top: 4px; flex-wrap: wrap; align-items: center; }
+.feed-actions-r { display: flex; gap: 2px; flex-shrink: 0; }
+
+/* Edit form (right panel) */
+.edit-form {
+  background: var(--surf2);
+  border-bottom: 1px solid var(--bdr);
+  padding: 12px 16px;
   display: grid;
-  grid-template-columns: 1fr 1fr 72px;
+  grid-template-columns: 1fr 1fr 68px;
   gap: 8px;
   align-items: end;
 }
-.inline-form .form-actions {
+.edit-form-footer {
+  grid-column: 1 / -1;
   display: flex;
   gap: 8px;
   justify-content: flex-end;
-  align-items: center;
 }
-
-/* ── Group add form (under group header) ─────────────── */
-.group-form {
-  background: rgba(3,169,244,0.05);
-  border-top: 2px solid var(--acc);
-  border-bottom: 1px solid var(--bdr);
-  padding: 12px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.group-form .form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr 72px;
-  gap: 8px;
-  align-items: end;
-}
-.group-form .form-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: space-between;
-  align-items: center;
-}
-.group-form-hint {
-  font-size: 11px;
-  color: var(--tx2);
-}
-
-/* ── Shared form field ───────────────────────────────── */
-.form-row {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: flex-end;
-}
-.form-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex: 1;
-  min-width: 80px;
-}
-.form-field label {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  color: var(--tx2);
-}
+.form-field { display: flex; flex-direction: column; gap: 4px; }
+.form-field label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--tx2); }
 .form-field input,
 .form-field select {
   background: var(--surf);
@@ -314,387 +294,221 @@ const STYLES = `
   padding: 6px 8px;
   font-size: 13px;
   outline: none;
-  transition: border-color 0.15s;
-  width: 100%;
-  box-sizing: border-box;
   height: 32px;
+  box-sizing: border-box;
+  transition: border-color .15s;
+  width: 100%;
 }
 .form-field input:focus,
 .form-field select:focus { border-color: var(--acc); }
 .form-field select option { background: var(--surf); }
-.form-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-}
 
-/* ── Buttons ─────────────────────────────────────────── */
-.btn {
-  border: none;
-  border-radius: var(--rad-s);
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  padding: 7px 14px;
-  transition: all 0.15s;
+/* Badges */
+.badge {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  padding: 2px 7px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .2px;
   white-space: nowrap;
 }
-.btn-primary { background: var(--acc); color: #fff; }
-.btn-primary:hover { filter: brightness(1.1); }
-.btn-ghost {
-  background: transparent;
-  color: var(--tx2);
-  border: 1px solid var(--bdr);
-}
-.btn-ghost:hover { color: var(--tx1); background: var(--surf2); }
-.btn-sm { padding: 5px 11px; font-size: 12px; }
+.type-sensor { background: rgba(33,150,243,.14); color: #42a5f5; }
+.type-switch { background: rgba(76,175,80,.14);  color: #66bb6a; }
+.type-number { background: rgba(255,152,0,.14);  color: #ffa726; }
+.type-text   { background: rgba(156,39,176,.14); color: #ba68c8; }
+.type-unknown{ background: rgba(255,255,255,.07);color: var(--tx2); }
+.dir-oneway  { background: rgba(96,125,139,.14); color: #90a4ae; }
+.dir-bidir   { background: rgba(0,188,212,.14);  color: #26c6da; }
+.dir-unknown { background: rgba(255,255,255,.07);color: var(--tx2); }
+.unit-badge  { background: var(--surf2); color: var(--tx2); border: 1px solid var(--bdr); }
 
+/* Toggle */
+.toggle { position: relative; display: inline-block; width: 34px; height: 19px; flex-shrink: 0; }
+.toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+.toggle-track { position: absolute; inset: 0; background: rgba(255,255,255,.12); border-radius: 20px; cursor: pointer; transition: background .2s; }
+.toggle input:checked ~ .toggle-track { background: var(--acc); }
+.toggle-thumb { position: absolute; width: 13px; height: 13px; background: #fff; border-radius: 50%; top: 3px; left: 3px; pointer-events: none; transition: transform .2s; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+.toggle input:checked ~ .toggle-thumb { transform: translateX(15px); }
+
+/* Icon button (edit/trash) */
 .icon-btn {
   background: transparent;
   border: none;
   cursor: pointer;
   color: var(--tx2);
-  padding: 5px 6px;
+  padding: 5px 5px;
   border-radius: 6px;
   display: inline-flex;
   align-items: center;
-  transition: all 0.15s;
-  line-height: 1;
+  transition: all .15s;
 }
 .icon-btn:hover { color: var(--tx1); background: var(--surf2); }
-.icon-btn.danger:hover { color: #ef5350; background: rgba(239,83,80,0.1); }
+.icon-btn.danger:hover { color: #ef5350; background: rgba(239,83,80,.1); }
 
-/* ── Configured Feed Rows ────────────────────────────── */
-.list-empty {
-  padding: 40px 20px;
-  text-align: center;
-  color: var(--tx2);
-  font-size: 13px;
-  line-height: 1.8;
+/* Buttons */
+.btn {
+  border: none; border-radius: var(--rad-s); cursor: pointer;
+  font-size: 13px; font-weight: 500; padding: 6px 13px;
+  display: inline-flex; align-items: center; gap: 5px;
+  transition: all .15s; white-space: nowrap;
 }
-.list-empty strong { display: block; color: var(--tx1); font-size: 15px; margin-bottom: 8px; }
+.btn-primary { background: var(--acc); color: #fff; }
+.btn-primary:hover { filter: brightness(1.1); }
+.btn-ghost { background: transparent; color: var(--tx2); border: 1px solid var(--bdr); }
+.btn-ghost:hover { color: var(--tx1); background: var(--surf2); }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+.btn-link { background: none; border: none; cursor: pointer; color: var(--acc); font-size: inherit; padding: 0; font-family: inherit; }
+.btn-link.danger { color: #ef5350; }
 
-.feed-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  border-top: 1px solid var(--bdr);
-  transition: background 0.1s;
-}
-.feed-row:first-child { border-top: none; }
-.feed-row:hover { background: rgba(255,255,255,0.02); }
-.feed-row.disabled { opacity: 0.45; }
-
-.feed-info { flex: 1; min-width: 0; }
-.feed-key {
-  font-weight: 600;
-  font-size: 13px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.feed-key .grp { color: var(--tx2); font-weight: 400; }
-.feed-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 5px;
-  flex-wrap: wrap;
-}
-.row-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
-
-.edit-form {
-  background: var(--surf2);
-  border-top: 1px solid var(--bdr);
-  padding: 14px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-/* ── Badges ──────────────────────────────────────────── */
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 20px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.2px;
-  white-space: nowrap;
-}
-.type-sensor { background: rgba(33,150,243,0.15);  color: #42a5f5; }
-.type-switch { background: rgba(76,175,80,0.15);   color: #66bb6a; }
-.type-number { background: rgba(255,152,0,0.15);   color: #ffa726; }
-.type-text   { background: rgba(156,39,176,0.15);  color: #ba68c8; }
-.dir-oneway  { background: rgba(96,125,139,0.15);  color: #90a4ae; }
-.dir-bidir   { background: rgba(0,188,212,0.15);   color: #26c6da; }
-.unit-badge  { background: var(--surf2); color: var(--tx2); border: 1px solid var(--bdr); }
-
-/* ── Toggle ──────────────────────────────────────────── */
-.toggle { position: relative; display: inline-block; width: 36px; height: 20px; flex-shrink: 0; }
-.toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
-.toggle-track {
-  position: absolute;
-  inset: 0;
-  background: rgba(255,255,255,0.12);
-  border-radius: 20px;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-.toggle input:checked ~ .toggle-track { background: var(--acc); }
-.toggle-thumb {
-  position: absolute;
-  width: 14px; height: 14px;
-  background: #fff;
-  border-radius: 50%;
-  top: 3px; left: 3px;
-  pointer-events: none;
-  transition: transform 0.2s;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
-}
-.toggle input:checked ~ .toggle-thumb { transform: translateX(16px); }
-
-/* ── Add Entity Panel ────────────────────────────────── */
-.add-panel {
-  background: var(--surf);
-  border-radius: var(--rad);
-  border: 1px solid var(--bdr);
-  margin-bottom: 20px;
-  overflow: hidden;
-}
-.add-form-body {
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-/* ── Entity Rows ─────────────────────────────────────── */
-.entity-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  border-top: 1px solid var(--bdr);
-  transition: background 0.1s;
-}
-.entity-row:first-child { border-top: none; }
-.entity-row:hover { background: rgba(255,255,255,0.02); }
-.entity-row.disabled { opacity: 0.45; }
-.entity-info { flex: 1; min-width: 0; }
-.entity-id {
-  font-weight: 600;
-  font-size: 13px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.entity-dest {
-  font-size: 12px;
-  color: var(--tx2);
-  margin-top: 3px;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-/* ── Loading ─────────────────────────────────────────── */
-.spinner {
-  display: inline-block;
-  width: 14px; height: 14px;
-  border: 2px solid rgba(255,255,255,0.15);
-  border-top-color: var(--acc);
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-
-.type-unknown, .dir-unknown { background: rgba(255,255,255,0.07); color: var(--tx2); }
-
+/* Banners */
 .warn-banner {
-  background: rgba(255,152,0,0.1);
-  border-bottom: 1px solid rgba(255,152,0,0.25);
+  background: rgba(255,152,0,.1);
+  border-bottom: 1px solid rgba(255,152,0,.2);
   color: #ffcc80;
   padding: 10px 16px;
   font-size: 12px;
   line-height: 1.6;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
-.btn-link {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--acc);
-  font-size: inherit;
-  padding: 0;
-  text-decoration: underline;
-  font-family: inherit;
-}
-.danger-link { color: #ef5350; text-decoration: none; }
-.danger-link:hover { text-decoration: underline; }
-
 .error-banner {
-  background: rgba(198,40,40,0.12);
-  border: 1px solid rgba(198,40,40,0.4);
+  background: rgba(198,40,40,.12);
+  border: 1px solid rgba(198,40,40,.35);
   border-radius: var(--rad-s);
   color: #ef9a9a;
-  padding: 12px 16px;
+  padding: 11px 15px;
   font-size: 13px;
   margin-bottom: 16px;
   display: flex;
   align-items: center;
+  gap: 12px;
   flex-wrap: wrap;
-  gap: 8px;
 }
 
-.loading-state {
-  padding: 80px 20px;
-  text-align: center;
-  color: var(--tx2);
-  font-size: 14px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-}
-.loading-state .spinner { width: 28px; height: 28px; border-width: 3px; }
-.saving-overlay { opacity: 0.55; pointer-events: none; }
+/* HA→AIO add form */
+.add-panel { background: var(--surf); border-radius: var(--rad); border: 1px solid var(--bdr); margin-bottom: 20px; overflow: hidden; }
+.add-form-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.form-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
 
-/* ── Toast ───────────────────────────────────────────── */
+/* Entity rows */
+.ent-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 14px; border-top: 1px solid var(--bdr);
+  transition: background .1s;
+}
+.ent-row:first-child { border-top: none; }
+.ent-row:hover { background: rgba(255,255,255,.02); }
+.ent-row.disabled { opacity: .45; }
+.ent-info { flex: 1; min-width: 0; }
+.ent-id { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ent-dest { font-size: 12px; color: var(--tx2); margin-top: 3px; display: flex; align-items: center; gap: 5px; }
+.ent-actions { display: flex; gap: 2px; flex-shrink: 0; }
+.ent-edit-form { background: var(--surf2); border-top: 1px solid var(--bdr); padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+
+/* Section label */
+.section-lbl { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--tx2); margin: 0 0 10px; }
+
+/* Toast */
 .toast {
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
+  position: fixed; bottom: 24px; left: 50%;
   transform: translateX(-50%) translateY(80px);
-  background: #323232;
-  color: #fff;
-  border-radius: 8px;
-  padding: 10px 20px;
-  font-size: 13px;
-  font-weight: 500;
-  box-shadow: var(--shd);
-  transition: transform 0.25s ease;
-  z-index: 100;
-  white-space: nowrap;
-  pointer-events: none;
+  background: #323232; color: #fff;
+  border-radius: 8px; padding: 10px 20px;
+  font-size: 13px; font-weight: 500;
+  box-shadow: 0 2px 8px rgba(0,0,0,.4);
+  transition: transform .25s ease;
+  z-index: 100; white-space: nowrap; pointer-events: none;
 }
 .toast.show { transform: translateX(-50%) translateY(0); }
 .toast.err  { background: #c62828; }
-
-.section-label {
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  color: var(--tx2);
-  margin: 0 0 10px;
-}
+.saving { opacity: .55; pointer-events: none; }
 `;
 
-const IC = {
-  cloud: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`,
-  edit:  `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5Z"/></svg>`,
-  trash: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`,
-  arrow: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>`,
-  chev:  `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>`,
-  plus:  `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>`,
-};
-
+// ─── Component ────────────────────────────────────────────────
 class AdafruitIOSyncPanel extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
-    this._tab = 'aio_to_ha';
-    this._groups = {};
-    this._cfg = { feeds: {}, ha_to_aio: [] };
-    this._expanded = new Set();
-    this._openFeed   = null;
-    this._openGroup  = null;
-    this._editFeed   = null;
-    this._editEnt    = null;
-    this._filter     = '';
-    this._loading    = true;
-    this._saving     = false;
-    this._loadError  = null;
-    this._addForm      = { entity_type: 'sensor', direction: 'aio_to_ha', unit: '' };
-    this._groupAddForm = { entity_type: 'sensor', direction: 'aio_to_ha', unit: '' };
-    this._editForm   = {};
-    this._newEnt     = { entity_id: '', aio_group: '', aio_feed: '' };
+    // Persistent state
+    this._tab       = 'aio_to_ha';
+    this._groups    = {};
+    this._cfg       = { feeds: {}, ha_to_aio: [] };
+    this._expanded  = new Set();
+    this._filter    = '';
+    // Edit state (right panel)
+    this._editFeed  = null;
+    this._editForm  = {};
+    this._editEnt   = null;
     this._editEntForm = {};
-    this._inited     = false;
+    // New entity form (HA→AIO)
+    this._newEnt    = { entity_id: '', aio_group: '', aio_feed: '' };
+    // Load state
+    this._loading   = true;
+    this._saving    = false;
+    this._loadError = null;
+    this._inited    = false;
   }
 
   set hass(h) {
     this._hass = h;
-    if (!this._inited) { this._inited = true; this._loadData(); }
+    if (!this._inited) { this._inited = true; this._load(); }
   }
 
-  connectedCallback() {
-    if (!this._inited) { this._render(); }
-  }
+  connectedCallback() { if (!this._inited) this._render(); }
 
-  // ─── Data ────────────────────────────────────────────────────
-
-  async _loadData() {
-    this._loading = true;
-    this._loadError = null;
-    this._render();
+  // ── Data ──────────────────────────────────────────────────────
+  async _load() {
+    this._loading = true; this._loadError = null; this._render();
     try {
       const [cfg, grp] = await Promise.all([
         this._hass.callApi('GET', 'adafruit_io_sync/config'),
         this._hass.callApi('GET', 'adafruit_io_sync/groups'),
       ]);
-      this._cfg    = cfg  || { feeds: {}, ha_to_aio: [] };
+      this._cfg    = cfg  || { feeds:{}, ha_to_aio:[] };
       this._groups = grp  || {};
     } catch (e) {
-      const msg = String(e?.message || e);
-      if (msg.includes('not_found') || msg.includes('404')) {
-        this._loadError = 'Integration not configured. Go to Settings → Integrations and set up Adafruit IO Sync.';
-      } else {
-        this._loadError = `Failed to load: ${msg}`;
-      }
+      const m = String(e?.message || e);
+      this._loadError = m.includes('404') || m.includes('not_found')
+        ? 'Integration not configured — go to Settings → Integrations and set up Adafruit IO Sync.'
+        : `Load failed: ${m}`;
     }
-    this._loading = false;
-    this._render();
+    this._loading = false; this._render();
   }
 
   async _save(options) {
-    this._saving = true;
-    this._render();
+    this._saving = true; this._render();
     try {
       await this._hass.callApi('POST', 'adafruit_io_sync/config', options);
       this._cfg = options;
-      this._openFeed = null; this._openGroup = null; this._editFeed = null; this._editEnt = null;
-      this._showToast('Saved — reloading integration…');
-    } catch (e) {
-      this._showToast(`Save failed: ${e?.message || e}`, true);
-    }
-    this._saving = false;
-    this._render();
+      this._editFeed = null; this._editEnt = null;
+      this._toast('Saved — reloading integration…');
+    } catch (e) { this._toast(`Save failed: ${e?.message||e}`, true); }
+    this._saving = false; this._render();
   }
 
-  // ─── Toast ───────────────────────────────────────────────────
-
-  _showToast(msg, err = false) {
+  _toast(msg, err=false) {
     const t = this.shadowRoot.querySelector('.toast');
     if (!t) return;
     t.textContent = msg;
     t.className = 'toast' + (err ? ' err' : '');
     requestAnimationFrame(() => t.classList.add('show'));
-    clearTimeout(this._toastTimer);
-    this._toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
+    clearTimeout(this._tt);
+    this._tt = setTimeout(() => t.classList.remove('show'), 3200);
   }
 
-  // ─── Root Render ─────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────
+  _feedName(gk, fk) { return this._groups[gk]?.feeds?.[fk]?.name || fk; }
+  _groupName(gk)    { return this._groups[gk]?.name || gk; }
 
+  // ── Root render ───────────────────────────────────────────────
   _render() {
     this.shadowRoot.innerHTML = `
-      <style>${STYLES}</style>
-      <div class="${this._saving ? 'saving-overlay' : ''}">
+      <style>${CSS}</style>
+      <div class="${this._saving?'saving':''}">
         <div class="app-header">
           <div class="app-title">${IC.cloud} Adafruit IO Sync</div>
           <div class="tabs">
@@ -703,201 +517,153 @@ class AdafruitIOSyncPanel extends HTMLElement {
           </div>
         </div>
         <div class="app-body">
-          ${this._loadError ? `<div class="error-banner">${esc(this._loadError)} <button class="btn btn-ghost btn-sm" data-reload-groups style="margin-left:12px">Retry</button></div>` : ''}
+          ${this._loadError ? `<div class="error-banner">${esc(this._loadError)}<button class="btn btn-ghost btn-sm" data-retry>Retry</button></div>` : ''}
           ${this._loading
             ? `<div class="loading-state"><div class="spinner"></div>Loading…</div>`
-            : this._tab === 'aio_to_ha' ? this._tplAIOtoHA() : this._tplHAtoAIO()
-          }
+            : this._tab==='aio_to_ha' ? this._tplAIOtoHA() : this._tplHAtoAIO()}
         </div>
       </div>
-      <div class="toast"></div>
-    `;
+      <div class="toast"></div>`;
     this._bind();
   }
 
-  // ─── AIO → HA ────────────────────────────────────────────────
-
-  _tplAIOtoHA() {
-    return `<div class="split-layout">${this._tplBrowser()}${this._tplConfiguredFeeds()}</div>`;
-  }
-
+  // ── AIO → HA: Browser (left) ─────────────────────────────────
   _tplBrowser() {
     const gkeys = Object.keys(this._groups);
     const q = this._filter.toLowerCase();
-    let html = '';
+    if (!gkeys.length)
+      return `<div class="panel"><div class="empty">No Adafruit IO groups found.<br>Check your connection.<br><br><button class="btn btn-ghost btn-sm" data-retry>Retry</button></div></div>`;
 
-    if (!gkeys.length) {
-      html = `<div class="browser-empty">No Adafruit IO groups found.<br>Check your connection or credentials.<br><br><button class="btn btn-ghost btn-sm" data-reload-groups>Retry</button></div>`;
-    } else {
-      for (const gk of gkeys) {
-        const grp = this._groups[gk];
-        const fkeys = Object.keys(grp.feeds || {});
-        const vis = q ? fkeys.filter(fk => {
-          const name = (grp.feeds[fk]?.name || fk).toLowerCase();
-          return fk.includes(q) || name.includes(q) || gk.includes(q) || (grp.name||'').toLowerCase().includes(q);
-        }) : fkeys;
-        if (q && !vis.length) continue;
+    let rows = '';
+    for (const gk of gkeys) {
+      const grp = this._groups[gk];
+      const fkeys = Object.keys(grp.feeds || {});
+      const vis = q
+        ? fkeys.filter(fk => {
+            const name = (grp.feeds[fk]?.name || fk).toLowerCase();
+            return fk.toLowerCase().includes(q) || name.includes(q)
+              || gk.toLowerCase().includes(q) || (grp.name||'').toLowerCase().includes(q);
+          })
+        : fkeys;
+      if (q && !vis.length) continue;
 
-        const open = this._expanded.has(gk);
-        const nAdded = fkeys.filter(fk => (`${gk}.${fk}`) in (this._cfg.feeds||{})).length;
-        const nUnadded = fkeys.length - nAdded;
-        const groupFormOpen = this._openGroup === gk;
-        const gf = this._groupAddForm;
+      const open = this._expanded.has(gk);
+      const nAdded   = fkeys.filter(fk => `${gk}.${fk}` in (this._cfg.feeds||{})).length;
+      const nUnadded = fkeys.length - nAdded;
+      const countTxt = nAdded ? `${nAdded}/${fkeys.length}` : `${fkeys.length}`;
 
-        html += `
-          <div class="group-header" data-gk="${esc(gk)}">
-            <span class="group-chevron${open?' open':''}">${IC.chev}</span>
-            <span class="group-name">${esc(grp.name||gk)}</span>
-            <span class="group-badge">${nAdded?`${nAdded}/`:''}${fkeys.length}</span>
-            ${nUnadded > 0 ? `<button class="group-add-btn" data-gadd="${esc(gk)}" title="Add all feeds in this group">${IC.plus} Add group</button>` : ''}
-          </div>`;
+      rows += `
+        <div class="grp-row" data-gk="${esc(gk)}">
+          <span class="grp-chev${open?' open':''}">${IC.chev}</span>
+          <span class="grp-name">${esc(grp.name||gk)}</span>
+          <span class="grp-count">${countTxt}</span>
+          ${nUnadded > 0
+            ? `<button class="add-btn all" data-gadd="${esc(gk)}" title="Add all ${nUnadded} feeds">${IC.plus} All</button>`
+            : ''}
+        </div>`;
 
-        if (groupFormOpen) {
-          html += `
-            <div class="group-form">
-              <div class="form-grid">
-                <div class="form-field">
-                  <label>Default Type</label>
-                  <select data-gf-type>
-                    ${['sensor','switch','number','text'].map(t=>`<option value="${t}"${gf.entity_type===t?' selected':''}>${TYPE_META[t].label}</option>`).join('')}
-                  </select>
-                </div>
-                <div class="form-field">
-                  <label>Direction</label>
-                  <select data-gf-dir>
-                    <option value="aio_to_ha"${gf.direction==='aio_to_ha'?' selected':''}>AIO → HA</option>
-                    <option value="bidirectional"${gf.direction==='bidirectional'?' selected':''}>⇄ Bidirectional</option>
-                  </select>
-                </div>
-                <div class="form-field">
-                  <label>Unit</label>
-                  <input type="text" data-gf-unit placeholder="opt." value="${esc(gf.unit)}">
-                </div>
-              </div>
-              <div class="form-actions">
-                <span class="group-form-hint">Applies to all ${nUnadded} unadded feed${nUnadded===1?'':'s'}</span>
-                <div style="display:flex;gap:8px">
-                  <button class="btn btn-ghost btn-sm" data-gf-cancel>Cancel</button>
-                  <button class="btn btn-primary btn-sm" data-gf-add="${esc(gk)}">${IC.plus} Add ${nUnadded} feed${nUnadded===1?'':'s'}</button>
-                </div>
-              </div>
+      if (open || q) {
+        for (const fk of vis) {
+          const full  = `${gk}.${fk}`;
+          const added = full in (this._cfg.feeds||{});
+          const fname = this._feedName(gk, fk);
+          const fkey  = fname !== fk ? fk : null;
+          rows += `
+            <div class="feed-row-b${added?' is-added':''}" data-fk="${esc(full)}" data-added="${added}">
+              <span class="feed-dot${added?' done':''}"></span>
+              <span class="feed-name-b">
+                <span class="fn">${esc(fname)}</span>
+                ${fkey ? `<span class="fk">${esc(fkey)}</span>` : ''}
+              </span>
+              ${!added ? `<button class="add-btn" data-fadd="${esc(full)}" title="Add to Home Assistant">${IC.plus}</button>` : ''}
             </div>`;
-        }
-
-        if (open || q) {
-          for (const fk of vis) {
-            const full = `${gk}.${fk}`;
-            const added = full in (this._cfg.feeds||{});
-            const formOpen = this._openFeed === full;
-            const feedName = grp.feeds[fk]?.name || fk;
-            const nameMatchesKey = feedName === fk;
-            const f = this._addForm;
-
-            html += `
-              <div class="feed-browser-item${added?' added':''}" data-fk="${esc(full)}" data-added="${added}">
-                <span class="feed-dot${added?' added-dot':''}"></span>
-                <span class="feed-label">
-                  ${esc(feedName)}
-                  ${!nameMatchesKey ? `<span class="feed-key-hint">${esc(fk)}</span>` : ''}
-                </span>
-                ${added ? `<span class="feed-added-chip">added</span>` : ''}
-              </div>`;
-
-            if (formOpen && !added) {
-              html += `
-                <div class="inline-form">
-                  <div class="form-grid">
-                    <div class="form-field">
-                      <label>Type</label>
-                      <select data-af-type>
-                        ${['sensor','switch','number','text'].map(t=>`<option value="${t}"${f.entity_type===t?' selected':''}>${TYPE_META[t].label}</option>`).join('')}
-                      </select>
-                    </div>
-                    <div class="form-field">
-                      <label>Direction</label>
-                      <select data-af-dir>
-                        <option value="aio_to_ha"${f.direction==='aio_to_ha'?' selected':''}>AIO → HA</option>
-                        <option value="bidirectional"${f.direction==='bidirectional'?' selected':''}>⇄ Bidirectional</option>
-                      </select>
-                    </div>
-                    <div class="form-field">
-                      <label>Unit</label>
-                      <input type="text" data-af-unit placeholder="opt." value="${esc(f.unit)}">
-                    </div>
-                  </div>
-                  <div class="form-actions">
-                    <button class="btn btn-ghost btn-sm" data-af-cancel>Cancel</button>
-                    <button class="btn btn-primary btn-sm" data-af-add="${esc(full)}">${IC.plus} Add to HA</button>
-                  </div>
-                </div>`;
-            }
-          }
         }
       }
     }
 
     return `
       <div class="panel">
-        <div class="panel-header">Available Feeds</div>
+        <div class="panel-hdr">Available Feeds</div>
         <div class="search-wrap">
-          <input class="search-input" type="text" autocomplete="off" placeholder="Search groups and feeds…" value="${esc(this._filter)}" data-search>
+          <input class="search-input" type="text" autocomplete="off" placeholder="Search…" value="${esc(this._filter)}" data-search>
         </div>
-        ${html}
+        ${rows}
       </div>`;
   }
 
-  _tplConfiguredFeeds() {
+  // ── AIO → HA: Configured (right) ─────────────────────────────
+  _tplConfigured() {
     const feeds = this._cfg.feeds || {};
-    const keys = Object.keys(feeds);
-    const unknownCount = keys.filter(fk => !TYPE_META[feeds[fk].entity_type] || !DIR_META[feeds[fk].direction]).length;
-    let html = '';
+    const keys  = Object.keys(feeds);
 
+    // Group by device (group key)
+    const byGroup = {};
+    for (const fk of keys) {
+      const dot = fk.indexOf('.');
+      const gk  = dot >= 0 ? fk.slice(0, dot) : fk;
+      (byGroup[gk] = byGroup[gk] || []).push(fk);
+    }
+    const gkeys = Object.keys(byGroup);
+
+    const countPart = keys.length
+      ? `<span class="count-badge">${keys.length}</span>`
+      : '';
+    const clearBtn = keys.length
+      ? `<button class="btn-link danger btn-sm" data-clear-all style="font-size:11px">Clear all</button>`
+      : '';
+
+    let body = '';
     if (!keys.length) {
-      html = `<div class="list-empty"><strong>No feeds configured yet</strong>Browse the list on the left and click any feed to add it to Home Assistant.</div>`;
+      body = `<div class="empty"><strong>No feeds configured yet</strong>Click ${IC.plus} next to any feed or group on the left to add it.</div>`;
     } else {
-      if (unknownCount > 0) {
-        html += `<div class="warn-banner">${unknownCount} feed${unknownCount>1?'s':''} imported from the old setup wizard have incomplete configuration — use the edit button to fix them, or <button class="btn-link" data-clear-all>clear all feeds</button> to start fresh.</div>`;
-      }
-      for (const fk of keys) {
-        const fc = feeds[fk];
-        const dot = fk.indexOf('.');
-        const gpart = dot >= 0 ? fk.slice(0, dot) : fk;
-        const fkey = dot >= 0 ? fk.slice(dot+1) : fk;
-        // Use friendly name from coordinator data when available
-        const friendlyName = this._groups[gpart]?.feeds?.[fkey]?.name || fkey;
-        const en = fc.enabled !== false;
-        const tm = TYPE_META[fc.entity_type] || { label: 'Not set', cls: 'type-unknown' };
-        const dm = DIR_META[fc.direction]    || { label: 'Not set', cls: 'dir-unknown'  };
-        const editing = this._editFeed === fk;
-
-        html += `
-          <div class="feed-row${en?'':' disabled'}">
-            <label class="toggle">
-              <input type="checkbox" data-tog-feed="${esc(fk)}"${en?' checked':''}>
-              <div class="toggle-track"></div>
-              <div class="toggle-thumb"></div>
-            </label>
-            <div class="feed-info">
-              <div class="feed-key"><span class="grp">${esc(gpart)} / </span>${esc(friendlyName)}${friendlyName !== fkey ? `<span class="feed-key-hint">${esc(fkey)}</span>` : ''}</div>
-              <div class="feed-meta">
-                <span class="badge ${tm.cls}">${esc(tm.label)}</span>
-                <span class="badge ${dm.cls}">${esc(dm.label)}</span>
-                ${fc.unit?`<span class="badge unit-badge">${esc(fc.unit)}</span>`:''}
-              </div>
-            </div>
-            <div class="row-actions">
-              <button class="icon-btn" data-edit-feed="${esc(fk)}" title="Edit">${IC.edit}</button>
-              <button class="icon-btn danger" data-rm-feed="${esc(fk)}" title="Remove">${IC.trash}</button>
-            </div>
+      for (const gk of gkeys) {
+        const fkList   = byGroup[gk];
+        const gname    = this._groupName(gk);
+        body += `<div class="device-group">
+          <div class="device-hdr">
+            ${IC.device}
+            <span class="device-hdr-name">${esc(gname)}</span>
+            <span class="device-hdr-count">${fkList.length} feed${fkList.length===1?'':'s'}</span>
+            <button class="device-hdr-rm" data-rm-group="${esc(gk)}" title="Remove all ${esc(gname)} feeds">${IC.trash}</button>
           </div>`;
 
-        if (editing) {
-          const ef = this._editForm;
-          html += `
-            <div class="edit-form">
-              <div class="form-row">
+        for (const fk of fkList) {
+          const fc      = feeds[fk];
+          const dot     = fk.indexOf('.');
+          const feedKey = dot >= 0 ? fk.slice(dot+1) : fk;
+          const fname   = this._feedName(gk, feedKey);
+          const enabled = fc.enabled !== false;
+          const tm      = TYPE_META[fc.entity_type] || { label:'Not set', cls:'type-unknown' };
+          const dm      = DIR_META[fc.direction]    || { label:'Not set', cls:'dir-unknown'  };
+          const editing = this._editFeed === fk;
+
+          body += `
+            <div class="feed-row-r${enabled?'':' disabled'}">
+              <label class="toggle">
+                <input type="checkbox" data-tog="${esc(fk)}"${enabled?' checked':''}>
+                <div class="toggle-track"></div>
+                <div class="toggle-thumb"></div>
+              </label>
+              <div class="feed-info-r">
+                <div class="feed-name-r">${esc(fname)}</div>
+                <div class="feed-meta-r">
+                  <span class="badge ${tm.cls}">${esc(tm.label)}</span>
+                  <span class="badge ${dm.cls}">${esc(dm.label)}</span>
+                  ${fc.unit ? `<span class="badge unit-badge">${esc(fc.unit)}</span>` : ''}
+                </div>
+              </div>
+              <div class="feed-actions-r">
+                <button class="icon-btn" data-edit-feed="${esc(fk)}">${IC.edit}</button>
+                <button class="icon-btn danger" data-rm-feed="${esc(fk)}">${IC.trash}</button>
+              </div>
+            </div>`;
+
+          if (editing) {
+            const ef = this._editForm;
+            body += `
+              <div class="edit-form">
                 <div class="form-field">
-                  <label>Entity Type</label>
+                  <label>Type</label>
                   <select data-ef-type>
                     ${['sensor','switch','number','text'].map(t=>`<option value="${t}"${(ef.entity_type||fc.entity_type)===t?' selected':''}>${TYPE_META[t].label}</option>`).join('')}
                   </select>
@@ -909,66 +675,70 @@ class AdafruitIOSyncPanel extends HTMLElement {
                     <option value="bidirectional"${(ef.direction||fc.direction)==='bidirectional'?' selected':''}>⇄ Bidirectional</option>
                   </select>
                 </div>
-                <div class="form-field" style="max-width:85px">
+                <div class="form-field">
                   <label>Unit</label>
-                  <input type="text" data-ef-unit placeholder="°F" value="${esc(ef.unit!==undefined ? ef.unit : (fc.unit||''))}">
+                  <input type="text" data-ef-unit placeholder="opt." value="${esc(ef.unit!==undefined?ef.unit:(fc.unit||''))}">
                 </div>
-              </div>
-              <div class="form-actions">
-                <button class="btn btn-ghost btn-sm" data-ef-cancel>Cancel</button>
-                <button class="btn btn-primary btn-sm" data-ef-save="${esc(fk)}">Save</button>
-              </div>
-            </div>`;
+                <div class="edit-form-footer">
+                  <button class="btn btn-ghost btn-sm" data-ef-cancel>Cancel</button>
+                  <button class="btn btn-primary btn-sm" data-ef-save="${esc(fk)}">Save</button>
+                </div>
+              </div>`;
+          }
         }
+        body += `</div>`; // .device-group
       }
     }
 
     return `
       <div class="panel">
-        <div class="panel-header">
-          Configured Feeds <span class="count">${keys.length}</span>
-          ${keys.length ? `<button class="btn-link danger-link" data-clear-all style="margin-left:auto;font-size:11px">Clear all</button>` : ''}
+        <div class="panel-hdr">
+          Configured Feeds ${countPart}
+          <span class="spacer"></span>
+          ${clearBtn}
         </div>
-        ${html}
+        ${body}
       </div>`;
   }
 
-  // ─── HA → AIO ────────────────────────────────────────────────
+  _tplAIOtoHA() {
+    return `<div class="split">${this._tplBrowser()}${this._tplConfigured()}</div>`;
+  }
 
+  // ── HA → AIO ──────────────────────────────────────────────────
   _tplHAtoAIO() {
     const allEnts = this._hass ? Object.keys(this._hass.states).sort() : [];
-    const opts = allEnts.map(e => `<option value="${esc(e)}">`).join('');
-    const ne = this._newEnt;
-    const list = this._cfg.ha_to_aio || [];
+    const opts    = allEnts.map(e=>`<option value="${esc(e)}">`).join('');
+    const ne      = this._newEnt;
+    const list    = this._cfg.ha_to_aio || [];
 
     let rows = '';
     if (!list.length) {
-      rows = `<div class="list-empty"><strong>No entities syncing yet</strong>Use the form above to push HA entity state changes to Adafruit IO in real time.</div>`;
+      rows = `<div class="empty"><strong>No entities syncing yet</strong>Use the form above to push HA state changes to Adafruit IO in real time.</div>`;
     } else {
       list.forEach((item, idx) => {
-        const en = item.enabled !== false;
+        const enabled = item.enabled !== false;
         const editing = this._editEnt === idx;
         const ef = this._editEntForm;
         rows += `
-          <div class="entity-row${en?'':' disabled'}">
+          <div class="ent-row${enabled?'':' disabled'}">
             <label class="toggle">
-              <input type="checkbox" data-tog-ent="${idx}"${en?' checked':''}>
+              <input type="checkbox" data-tog-ent="${idx}"${enabled?' checked':''}>
               <div class="toggle-track"></div>
               <div class="toggle-thumb"></div>
             </label>
-            <div class="entity-info">
-              <div class="entity-id">${esc(item.entity_id)}</div>
-              <div class="entity-dest">${IC.arrow} ${esc(item.aio_group)}.${esc(item.aio_feed)}</div>
+            <div class="ent-info">
+              <div class="ent-id">${esc(item.entity_id)}</div>
+              <div class="ent-dest">${IC.arrow} ${esc(item.aio_group)}.${esc(item.aio_feed)}</div>
             </div>
-            <div class="row-actions">
-              <button class="icon-btn" data-edit-ent="${idx}" title="Edit">${IC.edit}</button>
-              <button class="icon-btn danger" data-rm-ent="${idx}" title="Remove">${IC.trash}</button>
+            <div class="ent-actions">
+              <button class="icon-btn" data-edit-ent="${idx}">${IC.edit}</button>
+              <button class="icon-btn danger" data-rm-ent="${idx}">${IC.trash}</button>
             </div>
           </div>`;
-
         if (editing) {
           rows += `
-            <div class="edit-form">
+            <div class="ent-edit-form">
               <div class="form-row">
                 <div class="form-field" style="flex:2">
                   <label>Entity</label>
@@ -976,16 +746,10 @@ class AdafruitIOSyncPanel extends HTMLElement {
                 </div>
               </div>
               <div class="form-row">
-                <div class="form-field">
-                  <label>AIO Group</label>
-                  <input type="text" value="${esc(ef.aio_group!==undefined?ef.aio_group:item.aio_group)}" data-ee-grp>
-                </div>
-                <div class="form-field">
-                  <label>AIO Feed</label>
-                  <input type="text" value="${esc(ef.aio_feed!==undefined?ef.aio_feed:item.aio_feed)}" data-ee-feed>
-                </div>
+                <div class="form-field"><label>AIO Group</label><input type="text" value="${esc(ef.aio_group!==undefined?ef.aio_group:item.aio_group)}" data-ee-grp></div>
+                <div class="form-field"><label>AIO Feed</label><input type="text" value="${esc(ef.aio_feed!==undefined?ef.aio_feed:item.aio_feed)}" data-ee-feed></div>
               </div>
-              <div class="form-actions">
+              <div style="display:flex;gap:8px;justify-content:flex-end">
                 <button class="btn btn-ghost btn-sm" data-ee-cancel>Cancel</button>
                 <button class="btn btn-primary btn-sm" data-ee-save="${idx}">Save</button>
               </div>
@@ -996,7 +760,7 @@ class AdafruitIOSyncPanel extends HTMLElement {
 
     return `
       <div class="add-panel">
-        <div class="panel-header">Add Entity</div>
+        <div class="panel-hdr">Add Entity</div>
         <div class="add-form-body">
           <datalist id="ha-ent-list">${opts}</datalist>
           <div class="form-row">
@@ -1006,238 +770,183 @@ class AdafruitIOSyncPanel extends HTMLElement {
             </div>
           </div>
           <div class="form-row">
-            <div class="form-field">
-              <label>AIO Group</label>
-              <input type="text" placeholder="home" value="${esc(ne.aio_group)}" data-ne-grp>
-            </div>
-            <div class="form-field">
-              <label>AIO Feed</label>
-              <input type="text" placeholder="temperature" value="${esc(ne.aio_feed)}" data-ne-feed>
-            </div>
-            <div style="display:flex;align-items:flex-end">
-              <button class="btn btn-primary" data-ne-add>${IC.plus} Add</button>
-            </div>
+            <div class="form-field"><label>AIO Group</label><input type="text" placeholder="home" value="${esc(ne.aio_group)}" data-ne-grp></div>
+            <div class="form-field"><label>AIO Feed</label><input type="text" placeholder="temperature" value="${esc(ne.aio_feed)}" data-ne-feed></div>
+            <div style="display:flex;align-items:flex-end"><button class="btn btn-primary" data-ne-add>${IC.plus} Add</button></div>
           </div>
         </div>
       </div>
-      <p class="section-label">Syncing ${list.length} entit${list.length===1?'y':'ies'} to Adafruit IO</p>
+      <p class="section-lbl">Syncing ${list.length} entit${list.length===1?'y':'ies'} to Adafruit IO</p>
       <div class="panel">${rows}</div>`;
   }
 
-  // ─── Event Binding ───────────────────────────────────────────
-
+  // ── Event binding ─────────────────────────────────────────────
   _bind() {
     const sr = this.shadowRoot;
-    const q  = (sel) => sr.querySelector(sel);
-    const qa = (sel) => sr.querySelectorAll(sel);
+    const $  = sel => sr.querySelector(sel);
+    const $$ = sel => sr.querySelectorAll(sel);
 
     // Tabs
-    qa('.tab-btn').forEach(b => b.addEventListener('click', () => {
-      this._tab = b.dataset.tab;
-      this._openFeed = this._editFeed = this._editEnt = null;
-      this._render();
+    $$('.tab-btn').forEach(b => b.addEventListener('click', () => {
+      this._tab = b.dataset.tab; this._editFeed = this._editEnt = null; this._render();
     }));
 
-    // Retry loading groups
-    const retryBtn = q('[data-reload-groups]');
-    if (retryBtn) retryBtn.addEventListener('click', () => this._loadData());
+    // Retry
+    $$('[data-retry]').forEach(b => b.addEventListener('click', () => this._load()));
 
-    // Search
-    const s = q('[data-search]');
+    // Search (restore focus after re-render)
+    const s = $('[data-search]');
     if (s) s.addEventListener('input', e => {
       this._filter = e.target.value;
-      const cursor = e.target.selectionStart;
+      const cur = e.target.selectionStart;
       this._render();
       const ns = this.shadowRoot.querySelector('[data-search]');
-      if (ns) { ns.focus(); ns.setSelectionRange(cursor, cursor); }
+      if (ns) { ns.focus(); ns.setSelectionRange(cur, cur); }
     });
 
-    // Group expand — ignore clicks on the "Add group" button
-    qa('.group-header').forEach(el => el.addEventListener('click', e => {
+    // Group expand/collapse (ignore + button clicks)
+    $$('.grp-row').forEach(el => el.addEventListener('click', e => {
       if (e.target.closest('[data-gadd]')) return;
       const gk = el.dataset.gk;
       this._expanded.has(gk) ? this._expanded.delete(gk) : this._expanded.add(gk);
-      this._openGroup = null;
       this._render();
     }));
 
-    // Group add button → open group form
-    qa('[data-gadd]').forEach(btn => btn.addEventListener('click', e => {
+    // + Add group (all unadded feeds with defaults)
+    $$('[data-gadd]').forEach(btn => btn.addEventListener('click', e => {
       e.stopPropagation();
-      const gk = btn.dataset.gadd;
-      this._openGroup = this._openGroup === gk ? null : gk;
-      this._openFeed = null;
-      this._groupAddForm = { entity_type: 'sensor', direction: 'aio_to_ha', unit: '' };
-      if (this._openGroup) this._expanded.add(gk);
-      this._render();
-    }));
-
-    // Group form inputs
-    const gfType = q('[data-gf-type]'), gfDir = q('[data-gf-dir]'), gfUnit = q('[data-gf-unit]');
-    if (gfType) gfType.addEventListener('change', e => { this._groupAddForm.entity_type = e.target.value; });
-    if (gfDir)  gfDir .addEventListener('change', e => { this._groupAddForm.direction   = e.target.value; });
-    if (gfUnit) gfUnit.addEventListener('input',  e => { this._groupAddForm.unit        = e.target.value; });
-
-    // Group form cancel
-    const gfCancel = q('[data-gf-cancel]');
-    if (gfCancel) gfCancel.addEventListener('click', () => { this._openGroup = null; this._render(); });
-
-    // Group form add all
-    qa('[data-gf-add]').forEach(btn => btn.addEventListener('click', () => {
-      const gk   = btn.dataset.gfAdd;
-      const type = q('[data-gf-type]')?.value || 'sensor';
-      const dir  = q('[data-gf-dir]')?.value  || 'aio_to_ha';
-      const unit = q('[data-gf-unit]')?.value || '';
-      const grp  = this._groups[gk];
+      const gk  = btn.dataset.gadd;
+      const grp = this._groups[gk];
       if (!grp) return;
       const newFeeds = { ...this._cfg.feeds };
-      for (const fk of Object.keys(grp.feeds || {})) {
+      for (const fk of Object.keys(grp.feeds||{})) {
         const full = `${gk}.${fk}`;
-        if (!(full in newFeeds)) newFeeds[full] = { entity_type: type, direction: dir, unit, enabled: true };
+        if (!(full in newFeeds)) newFeeds[full] = { entity_type:'sensor', direction:'aio_to_ha', unit:'', enabled:true };
       }
       this._save({ ...this._cfg, feeds: newFeeds });
     }));
 
-    // Feed browser click → open add form
-    qa('.feed-browser-item').forEach(el => el.addEventListener('click', () => {
-      if (el.dataset.added === 'true') return;
-      const fk = el.dataset.fk;
-      this._openFeed  = this._openFeed === fk ? null : fk;
-      this._openGroup = null;
-      this._addForm   = { entity_type: 'sensor', direction: 'aio_to_ha', unit: '' };
-      this._render();
-    }));
-
-    // Feed add form inputs
-    const afType = q('[data-af-type]'), afDir = q('[data-af-dir]'), afUnit = q('[data-af-unit]');
-    if (afType) afType.addEventListener('change', e => { this._addForm.entity_type = e.target.value; });
-    if (afDir)  afDir .addEventListener('change', e => { this._addForm.direction   = e.target.value; });
-    if (afUnit) afUnit.addEventListener('input',  e => { this._addForm.unit        = e.target.value; });
-
-    // Feed add form cancel / confirm
-    const afCancel = q('[data-af-cancel]');
-    if (afCancel) afCancel.addEventListener('click', () => { this._openFeed = null; this._render(); });
-
-    qa('[data-af-add]').forEach(btn => btn.addEventListener('click', () => {
-      const full = btn.dataset.afAdd;
-      const type = q('[data-af-type]')?.value || 'sensor';
-      const dir  = q('[data-af-dir]')?.value  || 'aio_to_ha';
-      const unit = q('[data-af-unit]')?.value || '';
-      const newFeeds = { ...this._cfg.feeds, [full]: { entity_type: type, direction: dir, unit, enabled: true } };
+    // + Add single feed (instant, default sensor/AIO→HA)
+    $$('[data-fadd]').forEach(btn => btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const full = btn.dataset.fadd;
+      const newFeeds = { ...this._cfg.feeds, [full]: { entity_type:'sensor', direction:'aio_to_ha', unit:'', enabled:true } };
       this._save({ ...this._cfg, feeds: newFeeds });
     }));
 
     // Feed toggle
-    qa('[data-tog-feed]').forEach(c => c.addEventListener('change', () => {
-      const fk = c.dataset.togFeed;
+    $$('[data-tog]').forEach(c => c.addEventListener('change', () => {
+      const fk = c.dataset.tog;
       const newFeeds = { ...this._cfg.feeds, [fk]: { ...this._cfg.feeds[fk], enabled: c.checked } };
       this._save({ ...this._cfg, feeds: newFeeds });
     }));
 
     // Feed edit open/close
-    qa('[data-edit-feed]').forEach(b => b.addEventListener('click', () => {
+    $$('[data-edit-feed]').forEach(b => b.addEventListener('click', () => {
       const fk = b.dataset.editFeed;
       this._editFeed = this._editFeed === fk ? null : fk;
       this._editForm = {};
       this._render();
     }));
 
-    // Edit form inputs
-    const efType = q('[data-ef-type]'), efDir = q('[data-ef-dir]'), efUnit = q('[data-ef-unit]');
+    // Edit form live inputs
+    const efType = $('[data-ef-type]'), efDir = $('[data-ef-dir]'), efUnit = $('[data-ef-unit]');
     if (efType) efType.addEventListener('change', e => { this._editForm.entity_type = e.target.value; });
     if (efDir)  efDir .addEventListener('change', e => { this._editForm.direction   = e.target.value; });
     if (efUnit) efUnit.addEventListener('input',  e => { this._editForm.unit        = e.target.value; });
 
-    const efCancel = q('[data-ef-cancel]');
+    const efCancel = $('[data-ef-cancel]');
     if (efCancel) efCancel.addEventListener('click', () => { this._editFeed = null; this._render(); });
 
-    qa('[data-ef-save]').forEach(btn => btn.addEventListener('click', () => {
+    $$('[data-ef-save]').forEach(btn => btn.addEventListener('click', () => {
       const fk  = btn.dataset.efSave;
-      const existing = this._cfg.feeds[fk] || {};
-      const type = q('[data-ef-type]')?.value || existing.entity_type;
-      const dir  = q('[data-ef-dir]')?.value  || existing.direction;
-      const unit = q('[data-ef-unit]')?.value;
-      const newFeeds = { ...this._cfg.feeds, [fk]: { ...existing, entity_type: type, direction: dir, unit: unit !== undefined ? unit : (existing.unit||'') } };
+      const old = this._cfg.feeds[fk] || {};
+      const type = $('[data-ef-type]')?.value || old.entity_type;
+      const dir  = $('[data-ef-dir]')?.value  || old.direction;
+      const unit = $('[data-ef-unit]')?.value;
+      const newFeeds = { ...this._cfg.feeds, [fk]: { ...old, entity_type:type, direction:dir, unit: unit!==undefined?unit:(old.unit||'') } };
       this._save({ ...this._cfg, feeds: newFeeds });
     }));
 
-    // Feed remove
-    qa('[data-rm-feed]').forEach(btn => btn.addEventListener('click', () => {
+    // Remove single feed
+    $$('[data-rm-feed]').forEach(btn => btn.addEventListener('click', () => {
       const fk = btn.dataset.rmFeed;
-      if (!confirm(`Remove "${fk}" from Home Assistant?`)) return;
+      if (!confirm(`Remove "${fk}"?`)) return;
       const newFeeds = { ...this._cfg.feeds };
       delete newFeeds[fk];
       this._save({ ...this._cfg, feeds: newFeeds });
     }));
 
-    // Clear all feeds
-    qa('[data-clear-all]').forEach(btn => btn.addEventListener('click', () => {
-      const count = Object.keys(this._cfg.feeds || {}).length;
-      if (!confirm(`Remove all ${count} configured feeds and start fresh?`)) return;
+    // Remove all feeds in a group (device)
+    $$('[data-rm-group]').forEach(btn => btn.addEventListener('click', () => {
+      const gk    = btn.dataset.rmGroup;
+      const gname = this._groupName(gk);
+      if (!confirm(`Remove all feeds for "${gname}"?`)) return;
+      const newFeeds = { ...this._cfg.feeds };
+      for (const fk of Object.keys(newFeeds)) {
+        if (fk.startsWith(`${gk}.`)) delete newFeeds[fk];
+      }
+      this._save({ ...this._cfg, feeds: newFeeds });
+    }));
+
+    // Clear all
+    $$('[data-clear-all]').forEach(btn => btn.addEventListener('click', () => {
+      if (!confirm(`Remove all ${Object.keys(this._cfg.feeds||{}).length} configured feeds?`)) return;
       this._save({ ...this._cfg, feeds: {} });
     }));
 
-    // New entity inputs
-    const neEid = q('[data-ne-eid]'), neGrp = q('[data-ne-grp]'), neFeed = q('[data-ne-feed]');
+    // ── HA→AIO ──────────────────────────────────────────────────
+    const neEid = $('[data-ne-eid]'), neGrp = $('[data-ne-grp]'), neFeed = $('[data-ne-feed]');
     if (neEid)  neEid .addEventListener('input', e => { this._newEnt.entity_id = e.target.value; });
     if (neGrp)  neGrp .addEventListener('input', e => { this._newEnt.aio_group = e.target.value; });
     if (neFeed) neFeed.addEventListener('input', e => { this._newEnt.aio_feed  = e.target.value; });
 
-    // Add entity button
-    const neAdd = q('[data-ne-add]');
+    const neAdd = $('[data-ne-add]');
     if (neAdd) neAdd.addEventListener('click', () => {
-      const eid   = q('[data-ne-eid]')?.value.trim()  || '';
-      const group = q('[data-ne-grp]')?.value.trim()  || '';
-      const feed  = q('[data-ne-feed]')?.value.trim() || '';
-      if (!eid || !group || !feed) { this._showToast('Fill in all three fields', true); return; }
-      if ((this._cfg.ha_to_aio||[]).some(i => i.entity_id === eid)) {
-        this._showToast('Entity already mapped', true); return;
-      }
-      const newList = [...(this._cfg.ha_to_aio||[]), { entity_id: eid, aio_group: group, aio_feed: feed, enabled: true }];
-      this._newEnt = { entity_id: '', aio_group: '', aio_feed: '' };
+      const eid   = $('[data-ne-eid]')?.value.trim()  || '';
+      const group = $('[data-ne-grp]')?.value.trim()  || '';
+      const feed  = $('[data-ne-feed]')?.value.trim() || '';
+      if (!eid || !group || !feed) { this._toast('Fill in all three fields', true); return; }
+      if ((this._cfg.ha_to_aio||[]).some(i => i.entity_id===eid)) { this._toast('Already mapped', true); return; }
+      const newList = [...(this._cfg.ha_to_aio||[]), { entity_id:eid, aio_group:group, aio_feed:feed, enabled:true }];
+      this._newEnt = { entity_id:'', aio_group:'', aio_feed:'' };
       this._save({ ...this._cfg, ha_to_aio: newList });
     });
 
-    // Entity toggle
-    qa('[data-tog-ent]').forEach(c => c.addEventListener('change', () => {
+    $$('[data-tog-ent]').forEach(c => c.addEventListener('change', () => {
       const idx = +c.dataset.togEnt;
-      const newList = this._cfg.ha_to_aio.map((it,i) => i===idx ? {...it, enabled: c.checked} : it);
-      this._save({ ...this._cfg, ha_to_aio: newList });
+      this._save({ ...this._cfg, ha_to_aio: this._cfg.ha_to_aio.map((it,i)=>i===idx?{...it,enabled:c.checked}:it) });
     }));
 
-    // Entity edit
-    qa('[data-edit-ent]').forEach(b => b.addEventListener('click', () => {
+    $$('[data-edit-ent]').forEach(b => b.addEventListener('click', () => {
       const idx = +b.dataset.editEnt;
-      this._editEnt = this._editEnt === idx ? null : idx;
+      this._editEnt = this._editEnt===idx ? null : idx;
       this._editEntForm = {};
       this._render();
     }));
 
-    const eeEid = q('[data-ee-eid]'), eeGrp = q('[data-ee-grp]'), eeFeed = q('[data-ee-feed]');
+    const eeEid = $('[data-ee-eid]'), eeGrp = $('[data-ee-grp]'), eeFeed = $('[data-ee-feed]');
     if (eeEid)  eeEid .addEventListener('input', e => { this._editEntForm.entity_id = e.target.value; });
     if (eeGrp)  eeGrp .addEventListener('input', e => { this._editEntForm.aio_group  = e.target.value; });
     if (eeFeed) eeFeed.addEventListener('input', e => { this._editEntForm.aio_feed   = e.target.value; });
 
-    const eeCancel = q('[data-ee-cancel]');
-    if (eeCancel) eeCancel.addEventListener('click', () => { this._editEnt = null; this._render(); });
+    const eeCancel = $('[data-ee-cancel]');
+    if (eeCancel) eeCancel.addEventListener('click', () => { this._editEnt=null; this._render(); });
 
-    qa('[data-ee-save]').forEach(btn => btn.addEventListener('click', () => {
+    $$('[data-ee-save]').forEach(btn => btn.addEventListener('click', () => {
       const idx  = +btn.dataset.eeSave;
       const orig = this._cfg.ha_to_aio[idx];
-      const eid   = q('[data-ee-eid]')?.value.trim()  || orig.entity_id;
-      const group = q('[data-ee-grp]')?.value.trim()  || orig.aio_group;
-      const feed  = q('[data-ee-feed]')?.value.trim() || orig.aio_feed;
-      const newList = this._cfg.ha_to_aio.map((it,i) => i===idx ? {...it, entity_id: eid, aio_group: group, aio_feed: feed} : it);
-      this._save({ ...this._cfg, ha_to_aio: newList });
+      const eid   = $('[data-ee-eid]')?.value.trim()  || orig.entity_id;
+      const group = $('[data-ee-grp]')?.value.trim()  || orig.aio_group;
+      const feed  = $('[data-ee-feed]')?.value.trim() || orig.aio_feed;
+      this._save({ ...this._cfg, ha_to_aio: this._cfg.ha_to_aio.map((it,i)=>i===idx?{...it,entity_id:eid,aio_group:group,aio_feed:feed}:it) });
     }));
 
-    // Entity remove
-    qa('[data-rm-ent]').forEach(btn => btn.addEventListener('click', () => {
+    $$('[data-rm-ent]').forEach(btn => btn.addEventListener('click', () => {
       const idx = +btn.dataset.rmEnt;
       const it  = this._cfg.ha_to_aio[idx];
-      if (!confirm(`Remove ${it.entity_id} → ${it.aio_group}.${it.aio_feed}?`)) return;
-      const newList = this._cfg.ha_to_aio.filter((_,i) => i !== idx);
-      this._save({ ...this._cfg, ha_to_aio: newList });
+      if (!confirm(`Remove ${it.entity_id}?`)) return;
+      this._save({ ...this._cfg, ha_to_aio: this._cfg.ha_to_aio.filter((_,i)=>i!==idx) });
     }));
   }
 }
