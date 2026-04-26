@@ -330,7 +330,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         webcomponent_name="adafruit-io-sync-panel",
         sidebar_title="AIO Sync",
         sidebar_icon=sidebar_icon,
-        module_url=f"{_STATIC_PATH}/panel.js?v=1.6.6",
+        module_url=f"{_STATIC_PATH}/panel.js?v=1.6.7",
         embed_iframe=False,
         require_admin=True,
     )
