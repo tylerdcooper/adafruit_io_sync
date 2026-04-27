@@ -33,7 +33,7 @@ A HACS custom integration that bridges Adafruit IO feed groups and Home Assistan
 | Browse your AIO groups on the left, click **+** to import feeds as HA entities | Browse HA entities by domain, click **+** to start pushing state to AIO |
 
 <img width="2398" height="801" alt="image" src="https://github.com/user-attachments/assets/e17e0536-1b13-468b-befc-28247c4ad7e7" />
-
+---
 <img width="2398" height="801" alt="image" src="https://github.com/user-attachments/assets/120df104-f360-4bf2-a805-d619d0530e02" />
 
 
