@@ -94,6 +94,21 @@ const CSS = `
   padding: 20px 24px 0;
   flex-wrap: wrap;
 }
+.menu-btn {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--tx1);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+  line-height: 0;
+  flex-shrink: 0;
+}
+.menu-btn:hover { background: rgba(255,255,255,.08); }
+@media (max-width: 700px) {
+  .menu-btn { display: flex; align-items: center; justify-content: center; }
+}
 .app-title {
   display: flex;
   align-items: center;
@@ -628,6 +643,7 @@ class AdafruitIOSyncPanel extends HTMLElement {
       <style>${CSS}</style>
       <div class="${this._saving?'saving':''}">
         <div class="app-header">
+          <button class="menu-btn" data-menu aria-label="Open menu"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg></button>
           <div class="app-title">
             <span class="aio-logo">${AIO_LOGO(28)}</span>
             Adafruit IO Sync
@@ -1043,6 +1059,11 @@ class AdafruitIOSyncPanel extends HTMLElement {
     const sr = this.shadowRoot;
     const $  = sel => sr.querySelector(sel);
     const $$ = sel => sr.querySelectorAll(sel);
+
+    // Mobile hamburger — fires the same event HA's own menu button fires
+    $$('[data-menu]').forEach(b => b.addEventListener('click', () => {
+      this.dispatchEvent(new CustomEvent('hass-toggle-menu', { bubbles: true, composed: true }));
+    }));
 
     // Tabs
     $$('.tab-btn').forEach(b => b.addEventListener('click', () => {
