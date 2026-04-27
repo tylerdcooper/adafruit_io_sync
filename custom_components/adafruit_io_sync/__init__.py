@@ -319,7 +319,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     hass.http.register_view(AIOSyncConfigView)
     hass.http.register_view(AIOSyncGroupsView)
 
-    icon_url = f"{_STATIC_PATH}/icons.js"
+    icon_url = f"{_STATIC_PATH}/icons.js?v=1.6.12"
     icon_registered = _register_frontend_icon(hass, icon_url)
     sidebar_icon = "adafruit-io:logo" if icon_registered else "mdi:infinity"
 
