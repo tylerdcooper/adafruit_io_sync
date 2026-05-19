@@ -11,6 +11,7 @@ from .const import (
     CONF_AIO_API_KEY,
     CONF_AIO_USERNAME,
     CONF_HA_TO_AIO,
+    CONF_MIN_CHANGE,
     DOMAIN,
     PLATFORMS,
 )
@@ -394,6 +395,25 @@ async def _async_setup_ha_to_aio(
 
     entity_map = {item["entity_id"]: item for item in active}
 
+    # Tracks the last value actually sent to AIO per entity (and per attribute).
+    # Keys: entity_id for the main state, "{entity_id}/{attr_key}" for attributes.
+    # Used to suppress publishes that fall within the configured deadband.
+    last_published: dict[str, float] = {}
+
+    def _exceeds_deadband(key: str, new_val: object, min_change: float) -> bool:
+        """Return True (and update last_published) if the change clears the deadband."""
+        if not min_change:
+            return True
+        try:
+            new_f = float(new_val)  # type: ignore[arg-type]
+        except (ValueError, TypeError):
+            return True  # non-numeric state; always publish
+        prev = last_published.get(key)
+        if prev is None or abs(new_f - prev) >= min_change:
+            last_published[key] = new_f
+            return True
+        return False
+
     # Step 1 — subscribe bidirectional feeds BEFORE publishing anything so that
     # echoes of the initial push arrive after subscriptions are active and are
     # properly cleared from _pending_publishes.
@@ -461,6 +481,10 @@ async def _async_setup_ha_to_aio(
         if not state or state.state in ("unknown", "unavailable"):
             continue
         await mqtt_client.async_publish(item["aio_group"], item["aio_feed"], state.state)
+        try:
+            last_published[eid] = float(state.state)
+        except (ValueError, TypeError):
+            pass
         domain = eid.split(".")[0]
         for attr_key, ac in DOMAIN_ATTR_MAP.get(domain, {}).items():
             val = state.attributes.get(attr_key)
@@ -468,6 +492,10 @@ async def _async_setup_ha_to_aio(
                 await mqtt_client.async_publish(
                     item["aio_group"], f"{item['aio_feed']}-{ac['suffix']}", ac["encode"](val)
                 )
+                try:
+                    last_published[f"{eid}/{attr_key}"] = float(val)
+                except (ValueError, TypeError):
+                    pass
 
     # Step 3 — HA → AIO: listen for state + attribute changes
     async def _state_changed(event):
@@ -480,30 +508,34 @@ async def _async_setup_ha_to_aio(
         if config is None:
             return
 
-        # Publish main state only when it actually changes
-        if old_state is None or new_state.state != old_state.state:
-            _LOGGER.debug(
-                "HA→AIO: %s=%s → %s.%s",
-                entity_id, new_state.state, config["aio_group"], config["aio_feed"],
-            )
-            await mqtt_client.async_publish(
-                config["aio_group"], config["aio_feed"], new_state.state,
-            )
+        min_change = float(config.get(CONF_MIN_CHANGE) or 0)
 
-        # Publish each attribute when its value changes
+        # Publish main state only when it actually changes and clears the deadband
+        if old_state is None or new_state.state != old_state.state:
+            if _exceeds_deadband(entity_id, new_state.state, min_change):
+                _LOGGER.debug(
+                    "HA→AIO: %s=%s → %s.%s",
+                    entity_id, new_state.state, config["aio_group"], config["aio_feed"],
+                )
+                await mqtt_client.async_publish(
+                    config["aio_group"], config["aio_feed"], new_state.state,
+                )
+
+        # Publish each attribute when its value changes and clears the deadband
         domain = entity_id.split(".")[0]
         for attr_key, ac in DOMAIN_ATTR_MAP.get(domain, {}).items():
             new_val = new_state.attributes.get(attr_key)
             old_val = old_state.attributes.get(attr_key) if old_state else None
             if new_val is not None and new_val != old_val:
-                attr_feed = f"{config['aio_feed']}-{ac['suffix']}"
-                _LOGGER.debug(
-                    "HA→AIO attr: %s.%s=%s → %s.%s",
-                    entity_id, attr_key, new_val, config["aio_group"], attr_feed,
-                )
-                await mqtt_client.async_publish(
-                    config["aio_group"], attr_feed, ac["encode"](new_val)
-                )
+                if _exceeds_deadband(f"{entity_id}/{attr_key}", new_val, min_change):
+                    attr_feed = f"{config['aio_feed']}-{ac['suffix']}"
+                    _LOGGER.debug(
+                        "HA→AIO attr: %s.%s=%s → %s.%s",
+                        entity_id, attr_key, new_val, config["aio_group"], attr_feed,
+                    )
+                    await mqtt_client.async_publish(
+                        config["aio_group"], attr_feed, ac["encode"](new_val)
+                    )
 
     unsubscribe = async_track_state_change_event(hass, list(entity_map.keys()), _state_changed)
 

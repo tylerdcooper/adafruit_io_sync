@@ -14,6 +14,7 @@ Options flow (gear icon):
 from __future__ import annotations
 
 import logging
+import re
 
 import aiohttp
 import voluptuous as vol
@@ -23,6 +24,9 @@ from homeassistant.helpers.selector import (
     BooleanSelector,
     EntitySelector,
     EntitySelectorConfig,
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
     SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
@@ -38,11 +42,13 @@ from .const import (
     CONF_AIO_USERNAME,
     CONF_FEEDS,
     CONF_HA_TO_AIO,
+    CONF_MIN_CHANGE,
     CONF_SYNCED_GROUPS,
     DIRECTION_AIO_TO_HA,
     DIRECTION_BIDIRECTIONAL,
     DOMAIN,
     ENTITY_TYPES,
+    MULTI_ATTR_DOMAINS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -66,6 +72,14 @@ class CannotConnect(Exception):
 
 def _safe_key(key: str) -> str:
     return key.replace("-", "_").replace(".", "_")
+
+
+def _to_aio_key(name: str) -> str:
+    """Convert a human name to a valid AIO feed/group key (lowercase, hyphens only)."""
+    key = name.lower().strip()
+    key = re.sub(r"[^a-z0-9-]", "-", key)
+    key = re.sub(r"-+", "-", key).strip("-")
+    return key or "entity"
 
 
 async def _validate_credentials(username: str, api_key: str) -> None:
@@ -336,6 +350,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     "entity_id": self._current_ha_entity,
                     "aio_group": user_input["aio_group"].lower().replace(" ", "-"),
                     "aio_feed": user_input["aio_feed"].lower().replace(" ", "-"),
+                    CONF_MIN_CHANGE: float(user_input.get(CONF_MIN_CHANGE) or 0),
                 }
             )
 
@@ -345,9 +360,18 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         self._current_ha_entity = self._ha_entities_queue.pop(0)
         entity_id = self._current_ha_entity
         existing = self._existing_ha_to_aio.get(entity_id, {})
+        domain = entity_id.split(".")[0]
 
-        # Sensible defaults derived from the entity_id (e.g. sensor.living_room_temp)
-        default_feed = entity_id.split(".")[-1].replace("_", "-")
+        # For entities with multiple attribute feeds, default to a dedicated AIO group
+        # named after the entity's HA friendly name so all feeds are grouped together.
+        if domain in MULTI_ATTR_DOMAINS:
+            state = self.hass.states.get(entity_id)
+            friendly = (state.attributes.get("friendly_name", "") if state else "") or entity_id.split(".")[-1]
+            default_group = _to_aio_key(friendly)
+            default_feed = default_group
+        else:
+            default_group = "home-assistant"
+            default_feed = entity_id.split(".")[-1].replace("_", "-")
 
         return self.async_show_form(
             step_id="ha_entity_config",
@@ -355,12 +379,18 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 {
                     vol.Required(
                         "aio_group",
-                        default=existing.get("aio_group", "home-assistant"),
+                        default=existing.get("aio_group", default_group),
                     ): TextSelector(),
                     vol.Required(
                         "aio_feed",
                         default=existing.get("aio_feed", default_feed),
                     ): TextSelector(),
+                    vol.Optional(
+                        CONF_MIN_CHANGE,
+                        default=existing.get(CONF_MIN_CHANGE, 0),
+                    ): NumberSelector(
+                        NumberSelectorConfig(min=0, step=0.01, mode=NumberSelectorMode.BOX)
+                    ),
                 }
             ),
             description_placeholders={
